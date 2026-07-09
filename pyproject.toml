@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cobranzas-job"
-version = "0.1.0"
-description = "Job de cobranzas con arquitectura hexagonal"
+version = "0.2.0"
+description = "Cobranzas + Gestión Preventiva con arquitectura hexagonal"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
@@ -29,14 +29,15 @@ api = [
 ]
 
 [project.scripts]
-cobranzas = "cobranzas.jobs.cli:main"
+cobranzas  = "cobranzas.jobs.cli:main"
+preventiva = "preventiva.jobs.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/cobranzas"]
+packages = ["src/cobranzas", "src/preventiva"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
 
 [tool.coverage.run]
-source = ["cobranzas"]
+source = ["cobranzas", "preventiva"]

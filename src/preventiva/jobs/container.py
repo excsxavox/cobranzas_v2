@@ -1,0 +1,141 @@
+"""
+Composition root de preventiva-svc.
+Ensambla todas las dependencias a partir de PreventivaSettings.
+"""
+
+from datetime import date
+from pathlib import Path
+from typing import List, Optional, Set
+
+# Reutilización desde carteramora ─────────────────────────────────────────────
+from cobranzas.infrastructure.persistence.repositories.feriados_calendario_repository import (
+    SqlAlchemyFeriadosCalendarioRepository,
+)
+from cobranzas.infrastructure.persistence.session import get_session_factory
+from cobranzas.infrastructure.adapters.smtp_correo_adapter import SmtpCorreoAdapter
+# ─────────────────────────────────────────────────────────────────────────────
+
+from preventiva.infrastructure.config.settings import PreventivaSettings
+from preventiva.infrastructure.persistence.database import create_engine_preventiva, init_database
+from preventiva.infrastructure.persistence.repositories.historial_proceso_repository import (
+    HistorialProcesoRepository,
+)
+from preventiva.infrastructure.persistence.repositories.historial_mora_repository import (
+    SqlAlchemyHistorialMoraRepository,
+)
+from preventiva.infrastructure.persistence.repositories.reporte_preventiva_repository import (
+    SqlAlchemyReporteRepository,
+)
+from preventiva.infrastructure.persistence.repositories.parametros_repository import (
+    SqlAlchemyParametrosRepository,
+)
+from preventiva.domain.services.seleccion_preventiva_service import SeleccionPreventivaService
+from preventiva.domain.services.validar_saldo_service import ValidarSaldoService
+from preventiva.domain.services.calendario_gestion_service import CalendarioGestionService
+
+from preventiva.application.chain.parse_lis_handler import ParseLisHandler
+from preventiva.application.chain.historial_mora_handler import HistorialMoraHandler
+from preventiva.application.chain.seleccion_handler import SeleccionHandler
+from preventiva.application.chain.saldo_handler import SaldoHandler
+from preventiva.application.chain.recblue_handler import RecblueHandler
+from preventiva.application.chain.isabel_handler import IsabelHandler
+from preventiva.application.chain.reporte_handler import ReporteHandler
+from preventiva.application.chain.preventiva_context import PreventivaContext
+
+
+def _resolver_lis_cadetacaco(origen: str):
+    """Retorna función que resuelve rutas de CADETACACO para (anio, mes, dia)."""
+    def _resolver(anio: int, mes: int, dia: int) -> List[Path]:
+        base = Path(origen)
+        patron = f"cartera{dia:02d}{mes:02d}{str(anio)[2:]}b"
+        return sorted(base.glob(f"**/{patron}/cadetacaco*_of_0.lis"))
+    return _resolver
+
+
+def _resolver_lis_camorosico(origen: str):
+    def _resolver(anio: int, mes: int, dia: int) -> List[Path]:
+        base = Path(origen)
+        patron = f"cartera{dia:02d}{mes:02d}{str(anio)[2:]}b"
+        return sorted(base.glob(f"**/{patron}/camorosico*_of_0.lis"))
+    return _resolver
+
+
+def _resolver_ahsaldia(origen: str):
+    def _resolver(anio: int, mes: int, dia: int) -> List[Path]:
+        base = Path(origen)
+        patron = f"saldo{dia:02d}{mes:02d}{str(anio)[2:]}b"
+        return sorted(base.glob(f"**/{patron}/ahsaldia*_of00255.lis"))
+    return _resolver
+
+
+def _cargar_feriados(session_factory, clave: str) -> Set[date]:
+    repo = SqlAlchemyFeriadosCalendarioRepository(session_factory, clave)
+    return repo.fechas_vigentes()
+
+
+def build_cadena(settings: Optional[PreventivaSettings] = None):
+    """Construye y retorna (cadena, historial_repo, calendario_svc, session_factory)."""
+    cfg = settings or PreventivaSettings()
+
+    engine = create_engine_preventiva(cfg.database_url, echo=cfg.db_echo)
+    init_database(engine)
+    sf = get_session_factory(engine)
+
+    params_repo      = SqlAlchemyParametrosRepository(sf)
+    historial_repo   = HistorialProcesoRepository(sf)
+    mora_repo        = SqlAlchemyHistorialMoraRepository(sf)
+    reporte_repo     = SqlAlchemyReporteRepository(sf)
+
+    # Criterios desde BD (o valores de settings como fallback)
+    numero_meses    = params_repo.obtener_int("numero_meses",    cfg.prev_numero_meses)
+    umbral_mora     = params_repo.obtener_int("promedio_gestion", cfg.prev_promedio_gestion)
+    antiguedad      = params_repo.obtener_int("antiguedad",       cfg.prev_antiguedad)
+    dias_retraso    = params_repo.obtener_int("dias_retraso_recurrente", cfg.prev_dias_retraso_recurrente)
+    dias_antes      = params_repo.obtener_int("dias_antes_gestion", cfg.prev_dias_antes_gestion)
+
+    # Tipos de alivio desde dbo.catalogo (clave prev_alivio)
+    tipos_alivio: Set[str] = set()
+    try:
+        from sqlalchemy import select, text
+        with sf() as session:
+            filas = session.execute(
+                text("SELECT c.valor FROM dbo.catalogo c "
+                     "JOIN dbo.claves k ON k.id_clave = c.id_clave "
+                     "WHERE k.clave = 'prev_alivio' AND c.vigencia = 1")
+            ).fetchall()
+            tipos_alivio = {f[0].upper() for f in filas}
+    except Exception:
+        pass
+
+    seleccion_svc   = SeleccionPreventivaService(
+        umbral_mora_dias=umbral_mora,
+        numero_meses=numero_meses,
+        antiguedad_max_meses=antiguedad,
+        dias_retraso_recurrente=dias_retraso,
+        tipos_alivio=tipos_alivio,
+    )
+    saldo_svc       = ValidarSaldoService()
+    calendario_svc  = CalendarioGestionService(dias_antes_gestion=dias_antes)
+
+    dir_salida = Path(cfg.prev_directorio_resultados)
+
+    # Cadena de responsabilidad (orden: 1→2→3→4→5→6→7)
+    reporte   = ReporteHandler(reporte_repo=reporte_repo, directorio_salida=dir_salida)
+    isabel    = IsabelHandler(directorio_salida=dir_salida)
+    recblue   = RecblueHandler(session_factory=sf)
+    saldo     = SaldoHandler(servicio=saldo_svc, resolver_ahsaldia=_resolver_ahsaldia(cfg.prev_origen_ahsaldia))
+    seleccion = SeleccionHandler(servicio=seleccion_svc)
+    historial = HistorialMoraHandler(historial_repo=mora_repo, numero_meses=numero_meses)
+    parse_lis = ParseLisHandler(
+        resolver_cadetacaco=_resolver_lis_cadetacaco(cfg.prev_origen_lis),
+        resolver_camorosico=_resolver_lis_camorosico(cfg.prev_origen_lis),
+    )
+
+    isabel.enlazar(reporte)
+    recblue.enlazar(isabel)
+    saldo.enlazar(recblue)
+    seleccion.enlazar(saldo)
+    historial.enlazar(seleccion)
+    parse_lis.enlazar(historial)
+
+    return parse_lis, historial_repo, calendario_svc, sf
