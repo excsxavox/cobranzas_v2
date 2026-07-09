@@ -4,7 +4,7 @@ import math
 from datetime import date
 from typing import Dict, List
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, String as sqlalchemy_String
 from sqlalchemy.orm import sessionmaker
 
 from preventiva.domain.ports.historial_mora_port import HistorialMoraPort
@@ -69,6 +69,45 @@ class SqlAlchemyHistorialMoraRepository(HistorialMoraPort):
             )
             session.commit()
             return int(resultado.rowcount or 0)
+
+    def obtener_meses_con_mora_por_operacion(
+        self,
+        operaciones: List[str],
+        fecha_desde: date,
+        fecha_hasta: date,
+        dias_mora_minimo: int = 1,
+    ) -> Dict[str, int]:
+        """
+        Para C2 (pago tardío recurrente): cuenta cuántos meses distintos
+        dentro de la ventana aparece cada operación con dias_mora >= dias_mora_minimo.
+        Retorna {operacion: cantidad_de_meses_con_mora}.
+        """
+        if not operaciones:
+            return {}
+        with self._sf() as session:
+            from sqlalchemy import distinct, extract
+            filas = session.execute(
+                select(
+                    HistorialMoraDetalle.operacion,
+                    func.count(
+                        distinct(
+                            func.concat(
+                                func.cast(extract("year",  HistorialMoraDetalle.fecha_corte), sqlalchemy_String),
+                                func.cast(extract("month", HistorialMoraDetalle.fecha_corte), sqlalchemy_String),
+                            )
+                        )
+                    ).label("meses"),
+                )
+                .where(
+                    HistorialMoraDetalle.operacion.in_(operaciones),
+                    HistorialMoraDetalle.fecha_corte >= fecha_desde,
+                    HistorialMoraDetalle.fecha_corte <= fecha_hasta,
+                    HistorialMoraDetalle.dias_mora >= dias_mora_minimo,
+                )
+                .group_by(HistorialMoraDetalle.operacion)
+            ).all()
+
+        return {fila.operacion: int(fila.meses or 0) for fila in filas}
 
     def contar_por_fecha(self, fecha_corte: date) -> int:
         """Cuántos registros existen para la fecha dada (para evitar duplicados en backfill)."""

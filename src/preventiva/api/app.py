@@ -261,6 +261,46 @@ def create_app(settings: Optional[PreventivaSettings] = None) -> FastAPI:
             for r in filas
         ]
 
+    # ── Reporte mensual ────────────────────────────────────────────────────
+
+    @app.get(
+        "/reporte/mensual",
+        tags=["Reporte"],
+        summary="Generar reporte mensual consolidado",
+        description=(
+            "Genera el Excel consolidado con todos los cortes y gestiones "
+            "del mes indicado (HU líneas 275-284). "
+            "Si `descargar=true` devuelve el archivo; si no, guarda en el "
+            "directorio configurado y devuelve la ruta."
+        ),
+    )
+    def reporte_mensual(
+        anio: int = Query(..., description="Año (ej. 2026)"),
+        mes:  int = Query(..., ge=1, le=12, description="Mes (1-12)"),
+    ):
+        from preventiva.infrastructure.persistence.repositories.reporte_preventiva_repository import (
+            SqlAlchemyReporteRepository,
+        )
+        from preventiva.infrastructure.adapters.reporte_excel_writer import escribir_reporte_mensual
+
+        repo = SqlAlchemyReporteRepository(sf)
+        filas = repo.obtener_por_mes(anio, mes)
+        if not filas:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No hay gestiones registradas para {mes:02d}/{anio}.",
+            )
+
+        dir_salida = Path(cfg.prev_directorio_resultados)
+        ruta = escribir_reporte_mensual(filas, dir_salida, anio, mes)
+
+        return {
+            "archivo": ruta.name,
+            "ruta": str(ruta),
+            "total_registros": len(filas),
+            "cortes": sorted({f.dia_corte for f in filas if f.dia_corte}),
+        }
+
     # ── Días de corte (desde dbo.catalogo — tabla compartida) ─────────────
 
     @app.get(

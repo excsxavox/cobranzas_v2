@@ -3,6 +3,7 @@
 from datetime import date
 from typing import List
 
+from sqlalchemy import select, extract
 from sqlalchemy.orm import sessionmaker
 
 from preventiva.domain.ports.reporte_port import ReportePort
@@ -44,3 +45,37 @@ class SqlAlchemyReporteRepository(ReportePort):
                 ))
             session.commit()
         return len(registros)
+
+    def obtener_por_mes(self, anio: int, mes: int) -> List[ReportePreventiva]:
+        """Retorna todos los registros del mes dado, ordenados por corte y gestión."""
+        with self._sf() as session:
+            filas = session.scalars(
+                select(ReportePreventiva)
+                .where(
+                    extract("year",  ReportePreventiva.fecha_proceso) == anio,
+                    extract("month", ReportePreventiva.fecha_proceso) == mes,
+                )
+                .order_by(
+                    ReportePreventiva.dia_corte,
+                    ReportePreventiva.numero_gestion,
+                    ReportePreventiva.fecha_proceso,
+                )
+            ).all()
+        return list(filas)
+
+    def obtener_por_corte(self, anio: int, mes: int, dia_corte: int) -> List[ReportePreventiva]:
+        """Retorna los registros de un corte específico en el mes."""
+        with self._sf() as session:
+            filas = session.scalars(
+                select(ReportePreventiva)
+                .where(
+                    extract("year",  ReportePreventiva.fecha_proceso) == anio,
+                    extract("month", ReportePreventiva.fecha_proceso) == mes,
+                    ReportePreventiva.dia_corte == dia_corte,
+                )
+                .order_by(
+                    ReportePreventiva.numero_gestion,
+                    ReportePreventiva.fecha_proceso,
+                )
+            ).all()
+        return list(filas)

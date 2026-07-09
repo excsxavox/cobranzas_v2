@@ -295,7 +295,9 @@ MERGE dbo.parametros AS t USING (VALUES
 
   /* ── CRITERIO 2: pago tardío recurrente ─────────────────────────────── */
   ('dias_retraso_recurrente',  '5',
-   'Días de retraso recurrente para considerar pago tardío consistente'),
+   'Días de mora mínimos para que un mes cuente como mes con mora (umbral C2)'),
+  ('meses_consistencia_c2',    '5',
+   'Cantidad mínima de meses con mora en la ventana para calificar C2 (recurrente)'),
 
   /* ── CRITERIO 3: crédito nuevo (HU imagen — tabla parámetros) ───────── */
   ('antiguedad',               '6',

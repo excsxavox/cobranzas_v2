@@ -28,6 +28,20 @@ class HistorialMoraPort(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def obtener_meses_con_mora_por_operacion(
+        self,
+        operaciones: List[str],
+        fecha_desde: date,
+        fecha_hasta: date,
+        dias_mora_minimo: int = 1,
+    ) -> Dict[str, int]:
+        """
+        Cuántos meses distintos aparece cada operación con dias_mora >= dias_mora_minimo.
+        Retorna {operacion: cantidad_meses}. Usado para Criterio 2 (consistencia).
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def purgar_anteriores_a(self, fecha_limite: date) -> int:
         """
         Elimina los registros con fecha_corte anterior a `fecha_limite`

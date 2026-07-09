@@ -23,12 +23,15 @@ class HistorialMoraHandler(PreventivaHandler):
         historial_repo: HistorialMoraPort,
         numero_meses: int = 6,
         dias_retencion: int = 190,
+        dias_mora_minimo_c2: int = 1,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self._repo = historial_repo
         self._numero_meses = numero_meses
         self._dias_retencion = dias_retencion
+        # C2: umbral de días mora para contar un mes como "con mora"
+        self._dias_mora_minimo_c2 = dias_mora_minimo_c2
 
     def _procesar(self, ctx: PreventivaContext) -> PreventivaContext:
         # Ventana deslizante: elimina lo que supere el límite de retención
@@ -69,8 +72,16 @@ class HistorialMoraHandler(PreventivaHandler):
         fecha_desde = date(anio_d, mes_d, min(dia_d, ultimo_dia))
 
         operaciones = [r.operacion for r in ctx.registros_cadetacaco]
+
+        # C1: promedio de días mora en la ventana
         ctx.promedios_mora = self._repo.obtener_promedio_por_operacion(
             operaciones, fecha_desde, fecha_hasta
+        )
+
+        # C2: cuántos meses distintos aparece el cliente con mora (consistencia)
+        ctx.meses_con_mora = self._repo.obtener_meses_con_mora_por_operacion(
+            operaciones, fecha_desde, fecha_hasta,
+            dias_mora_minimo=self._dias_mora_minimo_c2,
         )
 
         # Publica la ventana en el contexto para que el API la devuelva
@@ -78,7 +89,7 @@ class HistorialMoraHandler(PreventivaHandler):
         ctx.ventana_hasta = fecha_hasta
 
         log.info(
-            "HistorialMora: ventana %s → %s  |  promedios para %d operaciones",
-            fecha_desde, fecha_hasta, len(ctx.promedios_mora),
+            "HistorialMora: ventana %s → %s  |  promedios=%d  meses_con_mora=%d",
+            fecha_desde, fecha_hasta, len(ctx.promedios_mora), len(ctx.meses_con_mora),
         )
         return ctx

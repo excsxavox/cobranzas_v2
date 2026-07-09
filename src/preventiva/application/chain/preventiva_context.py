@@ -35,7 +35,8 @@ class PreventivaContext:
     feriados: Set[date] = field(default_factory=set)
 
     # Resultados intermedios
-    promedios_mora:  Dict[str, int]   = field(default_factory=dict)   # {operacion: promedio}
+    promedios_mora:  Dict[str, int]   = field(default_factory=dict)   # {operacion: promedio_dias}
+    meses_con_mora:  Dict[str, int]   = field(default_factory=dict)   # {operacion: n_meses_con_mora} — C2
     telefonos:       Dict[str, str]   = field(default_factory=dict)   # {identificacion: telefono}
     saldos:          Dict[str, float] = field(default_factory=dict)   # {identificacion: saldo}
     id_creditos_rb:  Dict[str, str]   = field(default_factory=dict)   # {operacion: id_credito}

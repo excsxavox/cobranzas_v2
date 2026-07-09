@@ -21,6 +21,7 @@ class SeleccionHandler(PreventivaHandler):
             fecha_corte=ctx.fecha_ejecucion,
             promedios_mora=ctx.promedios_mora,
             telefonos=ctx.telefonos,
+            meses_con_mora=ctx.meses_con_mora,
         )
         log.info(
             "Seleccion: %d/%d operaciones califican para gestión preventiva",
