@@ -273,11 +273,25 @@ MERGE dbo.parametros AS t USING (VALUES
   ('ejecucion_corte',          'true',
    'true = usa fecha_cortes (5,10,15,17,20,24); false = evaluación diaria'),
 
+  /* ── ACTIVACIÓN DE FILTROS (toggles parametrizables) ─────────────────── */
+  ('filtro_mora_activo',        'true',
+   'Activa Criterio 1: mora promedio > umbral en los últimos N meses'),
+  ('filtro_pago_tardio_activo', 'true',
+   'Activa Criterio 2: pago tardío recurrente'),
+  ('filtro_nuevo_activo',       'true',
+   'Activa Criterio 3: crédito nuevo (antigüedad <= N meses)'),
+  ('filtro_alivio_activo',      'true',
+   'Activa Criterio 4: alivio financiero vigente'),
+  ('excluir_cobertura_total',   'true',
+   'Si true, excluye clientes con saldo suficiente para cubrir toda la cuota (HU)'),
+
   /* ── CRITERIO 1: mora promedio 6 meses (HU imagen — tabla parámetros) ── */
   ('numero_meses',             '6',
    'Número de meses a considerar para cálculo de mora promedio'),
   ('promedio_gestion',         '5',
    'Días mínimos de mora promedio por mes para incluir cliente'),
+  ('dias_retencion_historial', '190',
+   'Días máximos a conservar en historial_mora_detalle (ventana deslizante; ~6 meses)'),
 
   /* ── CRITERIO 2: pago tardío recurrente ─────────────────────────────── */
   ('dias_retraso_recurrente',  '5',

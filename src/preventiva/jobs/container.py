@@ -86,12 +86,21 @@ def build_cadena(settings: Optional[PreventivaSettings] = None):
     mora_repo        = SqlAlchemyHistorialMoraRepository(sf)
     reporte_repo     = SqlAlchemyReporteRepository(sf)
 
-    # Criterios desde BD (o valores de settings como fallback)
+    # Umbrales / días desde BD (o valores de settings como fallback)
     numero_meses    = params_repo.obtener_int("numero_meses",    cfg.prev_numero_meses)
     umbral_mora     = params_repo.obtener_int("promedio_gestion", cfg.prev_promedio_gestion)
     antiguedad      = params_repo.obtener_int("antiguedad",       cfg.prev_antiguedad)
     dias_retraso    = params_repo.obtener_int("dias_retraso_recurrente", cfg.prev_dias_retraso_recurrente)
     dias_antes      = params_repo.obtener_int("dias_antes_gestion", cfg.prev_dias_antes_gestion)
+    # Días máximos a conservar en historial_mora_detalle (ventana deslizante)
+    dias_retencion  = params_repo.obtener_int("dias_retencion_historial", 190)
+
+    # Activación de cada tipo de filtro (parametrizable, default activo)
+    c1_activo = params_repo.obtener_bool("filtro_mora_activo",        True)
+    c2_activo = params_repo.obtener_bool("filtro_pago_tardio_activo", True)
+    c3_activo = params_repo.obtener_bool("filtro_nuevo_activo",       True)
+    c4_activo = params_repo.obtener_bool("filtro_alivio_activo",      True)
+    excluir_saldo_total = params_repo.obtener_bool("excluir_cobertura_total", True)
 
     # Tipos de alivio desde dbo.catalogo (clave prev_alivio)
     tipos_alivio: Set[str] = set()
@@ -113,8 +122,12 @@ def build_cadena(settings: Optional[PreventivaSettings] = None):
         antiguedad_max_meses=antiguedad,
         dias_retraso_recurrente=dias_retraso,
         tipos_alivio=tipos_alivio,
+        criterio_mora_activo=c1_activo,
+        criterio_pago_tardio_activo=c2_activo,
+        criterio_nuevo_activo=c3_activo,
+        criterio_alivio_activo=c4_activo,
     )
-    saldo_svc       = ValidarSaldoService()
+    saldo_svc       = ValidarSaldoService(excluir_cobertura_total=excluir_saldo_total)
     calendario_svc  = CalendarioGestionService(dias_antes_gestion=dias_antes)
 
     dir_salida = Path(cfg.prev_directorio_resultados)
@@ -125,7 +138,11 @@ def build_cadena(settings: Optional[PreventivaSettings] = None):
     recblue   = RecblueHandler(session_factory=sf)
     saldo     = SaldoHandler(servicio=saldo_svc, resolver_ahsaldia=_resolver_ahsaldia(cfg.prev_origen_ahsaldia))
     seleccion = SeleccionHandler(servicio=seleccion_svc)
-    historial = HistorialMoraHandler(historial_repo=mora_repo, numero_meses=numero_meses)
+    historial = HistorialMoraHandler(
+        historial_repo=mora_repo,
+        numero_meses=numero_meses,
+        dias_retencion=dias_retencion,
+    )
     parse_lis = ParseLisHandler(
         resolver_cadetacaco=_resolver_lis_cadetacaco(cfg.prev_origen_lis),
         resolver_camorosico=_resolver_lis_camorosico(cfg.prev_origen_lis),

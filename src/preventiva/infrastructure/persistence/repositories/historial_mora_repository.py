@@ -4,7 +4,7 @@ import math
 from datetime import date
 from typing import Dict, List
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import sessionmaker
 
 from preventiva.domain.ports.historial_mora_port import HistorialMoraPort
@@ -60,3 +60,12 @@ class SqlAlchemyHistorialMoraRepository(HistorialMoraPort):
             fila.operacion: math.floor(fila.promedio or 0)
             for fila in filas
         }
+
+    def purgar_anteriores_a(self, fecha_limite: date) -> int:
+        with self._sf() as session:
+            resultado = session.execute(
+                delete(HistorialMoraDetalle)
+                .where(HistorialMoraDetalle.fecha_corte < fecha_limite)
+            )
+            session.commit()
+            return int(resultado.rowcount or 0)

@@ -26,12 +26,21 @@ class SeleccionPreventivaService:
         antiguedad_max_meses: int = 6,
         dias_retraso_recurrente: int = 5,
         tipos_alivio: Set[str] | None = None,
+        # Activación/desactivación de cada filtro (parametrizable)
+        criterio_mora_activo: bool = True,
+        criterio_pago_tardio_activo: bool = True,
+        criterio_nuevo_activo: bool = True,
+        criterio_alivio_activo: bool = True,
     ) -> None:
         self._umbral_mora = umbral_mora_dias
         self._numero_meses = numero_meses
         self._antiguedad_max = antiguedad_max_meses
         self._dias_retraso = dias_retraso_recurrente
         self._tipos_alivio: Set[str] = {t.upper() for t in (tipos_alivio or set())}
+        self._c1_activo = criterio_mora_activo
+        self._c2_activo = criterio_pago_tardio_activo
+        self._c3_activo = criterio_nuevo_activo
+        self._c4_activo = criterio_alivio_activo
 
     def evaluar(
         self,
@@ -59,16 +68,15 @@ class SeleccionPreventivaService:
                 fecha_concesion=reg.fecha_concesion,
             )
 
-            # Criterio 1: mora promedio
+            # Criterio 1: mora promedio (solo si el filtro está activo)
             promedio = promedios_mora.get(reg.operacion, 0)
             sel.promedio_meses = promedio
-            sel.criterio_mora = promedio >= self._umbral_mora
+            if self._c1_activo:
+                sel.criterio_mora = promedio >= self._umbral_mora
 
             # Criterio 2: pago tardío recurrente (camorosico histórico)
-            # El cálculo real se delega al HistorialMoraHandler que pasa
-            # el promedio ya calculado; criterio_pago_tardio se evalúa
-            # comparando días_mora promedio con umbral de retraso recurrente.
-            sel.criterio_pago_tardio = promedio >= self._dias_retraso
+            if self._c2_activo:
+                sel.criterio_pago_tardio = promedio >= self._dias_retraso
 
             # Criterio 3: crédito nuevo ≤ M meses (sin check mora)
             if reg.fecha_concesion:
@@ -77,10 +85,12 @@ class SeleccionPreventivaService:
                     + (fecha_corte.month - reg.fecha_concesion.month)
                 )
                 sel.antiguedad_meses = delta_meses
-                sel.criterio_nuevo = delta_meses <= self._antiguedad_max
+                if self._c3_activo:
+                    sel.criterio_nuevo = delta_meses <= self._antiguedad_max
 
             # Criterio 4: alivio financiero (sin check mora)
-            sel.criterio_alivio = reg.tipo_operacion.upper() in self._tipos_alivio
+            if self._c4_activo:
+                sel.criterio_alivio = reg.tipo_operacion.upper() in self._tipos_alivio
 
             # Decisión final
             sel.aplica_gestion = (

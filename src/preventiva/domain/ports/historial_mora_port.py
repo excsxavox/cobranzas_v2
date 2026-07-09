@@ -26,3 +26,11 @@ class HistorialMoraPort(ABC):
         Retorna {operacion: floor(promedio)}.
         """
         raise NotImplementedError
+
+    @abstractmethod
+    def purgar_anteriores_a(self, fecha_limite: date) -> int:
+        """
+        Elimina los registros con fecha_corte anterior a `fecha_limite`
+        (ventana deslizante). Retorna la cantidad de filas eliminadas.
+        """
+        raise NotImplementedError
