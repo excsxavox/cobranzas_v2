@@ -84,16 +84,6 @@ with engine.connect() as conn:
             tabla       TEXT NOT NULL
         )
     """))
-    conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS insumo_columnas (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            insumos_id  INTEGER NOT NULL REFERENCES insumos(insumos_id),
-            nombre_col  TEXT NOT NULL,
-            alias       TEXT NULL,
-            tipo        TEXT NULL DEFAULT 'TEXT',
-            requerida   INTEGER NOT NULL DEFAULT 1
-        )
-    """))
     conn.commit()
 
 print("Tablas creadas.")
@@ -244,34 +234,39 @@ with Session() as session:
 
     session.flush()
 
-    # Columnas clave de CADETACACO
+    # Columnas clave de CADETACACO (usando el ORM InsumoColumna → insumos_columnas)
+    from preventiva.infrastructure.persistence.models.insumo_columna import InsumoColumna
+    from preventiva.infrastructure.persistence.models.insumo import Insumo
+
     id_cade = session.execute(
         text("SELECT insumos_id FROM insumos WHERE nombre='cadetacaco'")
     ).scalar()
+
     columnas_cade = [
-        ("OPERACIÓN",        "operacion",       "TEXT", 1),
-        ("IDENTIFICACIÓN",   "identificacion",  "TEXT", 1),
-        ("NOMBRE SOCIO",     "nombre",          "TEXT", 1),
-        ("TIPO DE OPERACIÓN","tipo_operacion",  "TEXT", 1),
-        ("DIA DE PAGO",      "dia_pago",        "INT",  1),
-        ("VALOR CUOTA",      "valor_cuota",     "FLOAT",1),
-        ("DÍAS MORA",        "dias_mora",       "INT",  1),
-        ("FECHA CONCESIÓN",  "fecha_concesion", "TEXT", 0),
+        ("OPERACIÓN",        "operacion",       "TEXT",  "20"),
+        ("IDENTIFICACIÓN",   "identificacion",  "TEXT",  "20"),
+        ("NOMBRE SOCIO",     "nombre",          "TEXT",  "200"),
+        ("TIPO DE OPERACIÓN","tipo_operacion",  "TEXT",  "50"),
+        ("DIA DE PAGO",      "dia_pago",        "INT",   "2"),
+        ("VALOR CUOTA",      "valor_cuota",     "FLOAT", "18"),
+        ("DÍAS MORA",        "dias_mora",       "INT",   "4"),
+        ("FECHA CONCESIÓN",  "fecha_concesion", "TEXT",  "10"),
     ]
-    for nombre_col, alias, tipo, requerida in columnas_cade:
+    for col_insumo, col_tabla, tipo, longitud in columnas_cade:
         existe = session.execute(
-            text("SELECT COUNT(*) FROM insumo_columnas "
-                 "WHERE insumos_id=:i AND nombre_col=:n"),
-            {"i": id_cade, "n": nombre_col}
+            text("SELECT COUNT(*) FROM insumos_columnas "
+                 "WHERE insumos_id=:i AND columna_insumo=:n"),
+            {"i": id_cade, "n": col_insumo}
         ).scalar()
         if not existe:
-            session.execute(
-                text("INSERT INTO insumo_columnas "
-                     "(insumos_id, nombre_col, alias, tipo, requerida) "
-                     "VALUES (:i, :n, :a, :t, :r)"),
-                {"i": id_cade, "n": nombre_col,
-                 "a": alias, "t": tipo, "r": requerida}
-            )
+            session.add(InsumoColumna(
+                insumos_id=id_cade,
+                columna_insumo=col_insumo,
+                columna_tabla=col_tabla,
+                tipo_dato=tipo,
+                longitud_campo=longitud,
+                activo=True,
+            ))
 
     session.commit()
 
