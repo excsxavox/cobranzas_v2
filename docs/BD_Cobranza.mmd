@@ -1,0 +1,301 @@
+---
+title: BD_Cobranza — Esquema completo (A + Compartidas + B)
+---
+erDiagram
+
+  %% ══════════════════════════════════════════════════════════════
+  %%  ESQUEMA A — carteramora  (tablas existentes, sin cambios)
+  %% ══════════════════════════════════════════════════════════════
+
+  deudores ||--o{ deuda           : "id_deudor"
+  deuda    ||--o{ asesores_deuda  : "id_deuda"
+  asesores ||--o{ asesores_deuda  : "id_asesor"
+  claves   ||--o{ catalogo        : "id_clave"
+
+  deudores {
+    int      id_deudor   PK
+    string   nombre
+    string   documento
+    string   socio
+    datetime creado_en
+  }
+
+  deuda {
+    int      id_deuda             PK
+    int      id_deudor            FK
+    string   numero_operacion
+    date     fecha_corte
+    string   archivo_origen
+    datetime fecha_carga
+    string   oficina
+    string   desc_oficina
+    string   socio
+    string   nombre
+    string   cedula
+    string   sector
+    string   tipo_operacion
+    string   tipo_destino
+    date     fecha_concesion
+    date     fecha_vencimiento
+    date     fecha_ultimo_pago
+    decimal  valor_original_prestamo
+    decimal  saldo_capital_prestamo
+    string   calificacion
+    decimal  total_provision
+    decimal  saldo_140x
+    decimal  saldo_141x
+    decimal  saldo_142x
+    decimal  interes_normal
+    decimal  interes_devengado
+    decimal  interes_vencido
+    decimal  interes_mora
+    decimal  otros_rubros_deuda
+    decimal  total_operacion
+    string   estado
+    string   oficial
+    int      dias_mora
+    date     fecha_ingreso
+    string   tipo
+    int      dia_pago
+    decimal  valor_cuota
+    int      cuota_actual
+    int      dividendos
+    string   cod_oficial_asignado
+    string   oficial_asignado
+    string   decision
+    string   segmentacion
+    string   score
+    string   fuente_repago
+    string   actividad_economica
+    date     fecha_archivo
+    string   tipo_mes
+    string   tipo_fideicomiso
+    bigint   proceso_cod
+    datetime creado_en
+  }
+
+  asesores {
+    int     id_asesor    PK
+    string  nombre
+    string  cedula
+    string  numero_telefono
+    string  email
+    boolean activo
+    datetime creado_en
+  }
+
+  asesores_deuda {
+    int      id_asesor_deuda   PK
+    int      id_catalogo
+    int      id_asesor         FK
+    int      id_deuda          FK
+    string   estado
+    decimal  monto
+    decimal  monto_inicial
+    decimal  monto_mora
+    string   id_credito_recblue
+    date     fecha_asignacion
+    datetime fecha_modificacion
+  }
+
+  reglas {
+    int     id_regla    PK
+    string  nombre
+    string  descripcion
+    string  tipo
+    string  valor
+    int     prioridad
+    boolean activo
+    datetime creado_en
+    datetime fecha_modificacion
+  }
+
+  logs_auditoria {
+    int      id_log          PK
+    string   tabla
+    string   operacion
+    string   usuario
+    string   datos_anteriores
+    string   datos_nuevos
+    datetime registrado_en
+  }
+
+  %% ══════════════════════════════════════════════════════════════
+  %%  TABLAS COMPARTIDAS — leídas por ambos microservicios
+  %%  (write: carteramora / read-only: preventiva-svc)
+  %% ══════════════════════════════════════════════════════════════
+
+  claves {
+    int     id_clave    PK
+    string  clave
+    string  descripcion
+    boolean vigente
+    datetime fecha_creacion
+    datetime fecha_modificacion
+  }
+
+  catalogo {
+    int     id_catalogo PK
+    int     id_clave    FK
+    string  valor
+    string  descripcion
+    boolean vigencia
+    datetime fecha_creacion
+    datetime fecha_modificacion
+  }
+
+  credito_rb {
+    bigint   id              PK
+    string   id_credito
+    string   identificacion
+    string   socio
+    string   numero_operacion
+    datetime fecha_carga
+    string   proceso_cod
+  }
+
+  %% ══════════════════════════════════════════════════════════════
+  %%  ESQUEMA B — preventiva-svc  (tablas nuevas GRC-03)
+  %% ══════════════════════════════════════════════════════════════
+
+  %% ── Trazabilidad de ejecuciones ──────────────────────────────
+  historial_proceso ||--o{ ejecucion_pad          : "proceso_cod"
+  historial_proceso ||--o{ logs_cp                : "proceso_cod"
+  historial_proceso ||--o{ historial_mora_detalle  : "proceso_cod"
+  historial_proceso ||--o{ promedio_general_mes    : "proceso_cod"
+  historial_proceso ||--o{ reporte_preventiva      : "proceso_cod"
+
+  %% ── Catálogos → tablas de resultado ─────────────────────────
+  %% fecha_cortes y alivio_financiero viven en claves+catalogo
+  %% (claves prev_dias_corte y prev_alivio). dia_corte se almacena
+  %% como INT directo en promedio_general_mes y reporte_preventiva.
+  insumos           ||--o{ insumos_columnas        : "insumos_id"
+
+  historial_proceso {
+    string   proceso_cod     PK
+    datetime fecha_inicio
+    datetime fecha_fin
+    string   estado
+    int      numero_gestion
+    int      dia_corte
+    string   modo
+  }
+
+  ejecucion_pad {
+    bigint   id              PK
+    string   proceso_cod     FK
+    string   paso_ejecucion
+    string   estado
+    string   descripcion
+    int      total_registros
+    datetime fecha_registro
+  }
+
+  logs_cp {
+    bigint   id               PK
+    string   proceso_cod      FK
+    string   usuario
+    datetime fecha_hora
+    string   proceso_ejecutado
+    string   estado
+    string   descripcion
+    int      total_registros
+    string   tiempo_total
+  }
+
+  %% ── Catálogos parametrizables ────────────────────────────────
+  %% dias_corte  → dbo.claves clave=prev_dias_corte  + dbo.catalogo
+  %% alivio      → dbo.claves clave=prev_alivio      + dbo.catalogo
+  parametros {
+    int    id          PK
+    string nombre
+    string valor
+    string descripcion
+    bit    activo
+  }
+
+  notificaciones {
+    int    id               PK
+    string id_proceso
+    string estado
+    string correo_para
+    string correo_copia
+    string plantilla_correo
+    bit    activo
+  }
+
+  %% ── Diccionario de insumos .lis ──────────────────────────────
+  insumos {
+    int    insumos_id PK
+    string nombre
+    string tabla
+  }
+
+  insumos_columnas {
+    int    insumos_columnas_id PK
+    int    insumos_id          FK
+    string columna_insumo
+    string columna_tabla
+    string tipo_dato
+    string longitud_campo
+    bit    activo
+  }
+
+  %% ── Historial mora 6 meses ───────────────────────────────────
+  historial_mora_detalle {
+    bigint id             PK
+    string proceso_cod    FK
+    string operacion
+    string identificacion
+    string nombre
+    date   fecha_corte
+    int    dias_mora
+    string fuente_archivo
+  }
+
+  %% ── Resultado de selección (staging por ejecución) ──────────
+  promedio_general_mes {
+    bigint   id                   PK
+    string   proceso_cod          FK
+    int      dia_corte
+    string   operacion
+    string   identificacion
+    string   nombre
+    string   telefono
+    string   tipo_operacion
+    int      dia_pago
+    decimal  valor_cuota
+    int      dias_mora_actual
+    int      promedio_meses
+    date     fecha_desde
+    date     fecha_hasta
+    bit      criterio_mora
+    bit      criterio_pago_tardio
+    date     fecha_concesion
+    int      antiguedad_meses
+    bit      criterio_nuevo
+    bit      criterio_alivio
+    string   aplica_gestion
+    decimal  saldo_cuenta
+    decimal  valor_faltante
+    string   cobertura
+    datetime fecha_actualiza
+  }
+
+  %% ── Reporte definitivo + persistencia para Isabel ────────────
+  reporte_preventiva {
+    bigint   id               PK
+    string   proceso_cod      FK
+    date     fecha_proceso
+    string   nombre
+    string   cedula
+    string   numero_operacion
+    int      dias_mora
+    int      dia_pago
+    string   telefono
+    decimal  saldo_pendiente
+    decimal  saldo_cuenta
+    int      numero_gestion
+    string   id_credito_rb
+    int      dia_corte
+  }

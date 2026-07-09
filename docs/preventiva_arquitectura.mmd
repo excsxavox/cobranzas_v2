@@ -1,0 +1,216 @@
+%%{
+  init: {
+    "theme": "dark",
+    "themeVariables": {
+      "primaryColor": "#1e2a3a",
+      "primaryTextColor": "#c9d1d9",
+      "primaryBorderColor": "#3d7ab0",
+      "lineColor": "#8b949e",
+      "secondaryColor": "#1a3a2a",
+      "tertiaryColor": "#2a1a3a"
+    }
+  }
+}%%
+
+graph TB
+
+  %% ═══════════════════════════════════════════════════════
+  %% FUENTES EXTERNAS
+  %% ═══════════════════════════════════════════════════════
+  subgraph RED["Red Cooperativa"]
+    direction LR
+    FS1[("\\192.168.101.155\nlistados_cayambe\nCAMOROSICO · CADETACACO")]
+    FS2[("\\192.168.101.148\nListados_Cayambe\nahsaldia")]
+    RB_SRC[("Recblue\nExcel / SQL Server")]
+    SMTP_EXT(["SMTP\npgalarza@ · amontero@"])
+  end
+
+  %% ═══════════════════════════════════════════════════════
+  %% BD_COBRANZA — TABLAS COMPARTIDAS (mismo servidor SQL Server)
+  %% ═══════════════════════════════════════════════════════
+  subgraph SHARED_BD["BD_Cobranza  ·  SQL Server  —  Tablas COMPARTIDAS (solo lectura desde preventiva-svc)"]
+    direction LR
+    SH_REGLAS[("dbo.reglas\nexclusiones por estado y\ntipo_oper (motor de reglas)")]
+    SH_FERIADOS[("dbo.claves + dbo.catalogo\nclave = 'feriados_catalogo'\nferiados para días hábiles")]
+    SH_RB[("dbo.credito_rb\nid_credito por numero_operacion\npara archivo Isabel")]
+  end
+
+  %% ═══════════════════════════════════════════════════════
+  %% MICROSERVICIO 1 — carteramora   (SIN CAMBIOS)
+  %% ═══════════════════════════════════════════════════════
+  subgraph CM["carteramora  ·  :8000 FastAPI  ·  :50051 gRPC  ——  ESQUEMA A"]
+    direction TB
+
+    subgraph CM_API_BOX["API REST  :8000"]
+      CM_API["/pipeline · /fin-mes\n/lis-a-excel · /health"]
+    end
+
+    subgraph CM_GRPC_BOX["gRPC Server  :50051  —  carteramora.proto  (lógica Python reutilizable)"]
+      direction LR
+      CG1["ParseLisFile\npath,tipo → RegistroLis[]"]
+      CG2["GetDiasHabiles\nfecha,n → fecha_habil"]
+      CG3["SendNotification\nasunto,msgs,emails → ok"]
+    end
+
+    subgraph CM_DOMAIN["Domain  (Esquema A)"]
+      direction LR
+      CM_D1["dias_habiles_service\nvencimiento_efectivo"]
+      CM_D2["mora_temprana_service\nclasificar_mora"]
+      CM_D3["asignacion_cartera_service\nrotacion_asesores"]
+      CM_D4["notificacion_errores_service"]
+    end
+
+    subgraph CM_INFRA["Infrastructure  (Esquema A)"]
+      direction LR
+      CM_I1["cuadro_morosidad_parser\nte_detallado_cartera_parser"]
+      CM_I2["recblue_archivo_adapter\nrecblue_sql_server_adapter"]
+      CM_I3["smtp_correo_adapter"]
+      CM_I4["feriado_catalogo_repository\nlee dbo.claves + dbo.catalogo"]
+    end
+
+    subgraph CM_BD["BD carteramora  —  Esquema A  (tablas propias)"]
+      CM_DB[("deudores · deuda\nasesor_deuda · asesores\ntmp_stg_*\nlogs_auditoria")]
+    end
+
+    CM_D1 --> CG2
+    CM_I1 --> CG1
+    CM_I3 --> CG3
+    CM_D4 --> CG3
+    CM_I4 -->|"lee feriados"| SH_FERIADOS
+    CM_D2 -->|"lee reglas"| SH_REGLAS
+    CM_D3 --> CM_BD
+    CM_D2 --> CM_BD
+  end
+
+  %% ═══════════════════════════════════════════════════════
+  %% MICROSERVICIO 2 — preventiva-svc   (NUEVO, INDEPENDIENTE)
+  %% ═══════════════════════════════════════════════════════
+  subgraph PV["preventiva-svc  ·  :8001 FastAPI  ·  APScheduler  ——  ESQUEMA B"]
+    direction TB
+
+    subgraph PV_API_BOX["API REST  :8001"]
+      PV_API["POST /ejecutar-preventiva\nGET|PUT /params\nGET /historial/{cedula}\nGET /health"]
+    end
+
+    subgraph PV_GRPC_CLI["gRPC Client  →  carteramora:50051  (solo lógica Python)"]
+      PV_GC["stub ParseLisFile\nstub GetDiasHabiles\nstub SendNotification"]
+    end
+
+    subgraph PV_BD_SHARED["Acceso directo BD compartida (mismo SQL Server)"]
+      PV_SR["lee dbo.reglas\ncriterios de exclusión"]
+      PV_SF["lee dbo.claves + dbo.catalogo\nferiados_catalogo → fechas hábiles"]
+      PV_SRB["lee dbo.credito_rb\noperacion → id_credito para Isabel"]
+    end
+
+    subgraph PV_DOMAIN["Domain  (Esquema B — lógica preventiva)"]
+      direction LR
+      PV_D1["scheduler_service\ncortes: 5,10,15,17,20,24\nmodo diario param."]
+      PV_D2["historial_mora_service\nventana 6 meses\nmora_prom = floor(suma/n)"]
+      PV_D3["seleccion_preventiva_service\nCriterio 1: mora prom > 5d (6m)\nCriterio 2: pago tardío recurrente\nCriterio 3: nuevo ≤6m (SIN mora check)\nCriterio 4: alivio vigente (SIN mora check)"]
+      PV_D4["validar_saldo_service\ncobertura TOTAL/PARCIAL\nfaltante = cuota − saldo"]
+      PV_D5["gestion_calendario_service\ngestión 1: 2d antes\ngestión 2: 1d antes\ngestión 3: día pago"]
+    end
+
+    subgraph PV_INFRA["Infrastructure  (Esquema B — adaptadores nuevos)"]
+      direction LR
+      PV_I1["ahsaldia_parser"]
+      PV_I2["historial_mora_repository\nacumula 6 meses CAMOROSICO"]
+      PV_I3["isabel_writer\nPREVENTIVA_CORTE_*.txt\nsep |  ·  tel|nombre|id_rb"]
+      PV_I4["reporte_mensual_writer\nREPORTE_PREVENTIVA_*.xls\n3 gestiones + consolidado"]
+      PV_I5["parametros_repository"]
+    end
+
+    subgraph PV_CHAIN["Application Chain  (Esquema B)"]
+      direction LR
+      PC1["sched"] --> PC2["parse_lis"] --> PC3["historial"] --> PC4["seleccion"] --> PC5["saldo"] --> PC6["calendario"] --> PC7["isabel"] --> PC8["reporte"]
+    end
+
+    subgraph PV_BD_OWN["BD preventiva  —  Esquema B  (tablas propias en BD_Cobranza)"]
+      PV_DB[("historial_proceso\nhistorial_mora_detalle\npromedio_general_mes\nreporte_preventiva\nparametros · fecha_cortes\nalivio_financiero · insumos\nnotificaciones · logs_cp")]
+    end
+
+    PV_D2 --> PV_I2
+    PV_D3 --> PV_CHAIN
+    PV_D4 --> PV_CHAIN
+    PV_D5 --> PV_CHAIN
+    PV_D1 --> PV_CHAIN
+    PV_GC --> PV_D2
+    PV_GC --> PV_D3
+    PV_GC --> PV_D4
+    PV_GC --> PV_D5
+    PV_I1 --> PV_D4
+    PV_I2 --> PV_D2
+    PV_I5 --> PV_BD_OWN
+    PV_CHAIN --> PV_I3
+    PV_CHAIN --> PV_I4
+    PV_CHAIN --> PV_BD_OWN
+    PV_API --> PV_D1
+    PV_API --> PV_I5
+
+    PV_SR -->|"reglas exclusión"| PV_D3
+    PV_SF -->|"fechas hábiles"| PV_D5
+    PV_SRB -->|"id_credito"| PV_I3
+  end
+
+  %% ═══════════════════════════════════════════════════════
+  %% SALIDAS
+  %% ═══════════════════════════════════════════════════════
+  subgraph OUT["Salidas  —  \\192.168.101.155\Gestion_preventiva\"]
+    CAMPANAS[("Carpeta campañas\ncobranza preventiva")]
+    ISABEL(["Isabel\nmarcación telefónica"])
+  end
+
+  %% ═══════════════════════════════════════════════════════
+  %% CONEXIONES EXTERNAS → carteramora
+  %% ═══════════════════════════════════════════════════════
+  FS1 -->|".lis diarios"| CM_I1
+  RB_SRC -->|"id_credito"| CM_I2
+  CM_I3 -->|"email"| SMTP_EXT
+
+  %% ═══════════════════════════════════════════════════════
+  %% CONEXIONES EXTERNAS → preventiva-svc
+  %% ═══════════════════════════════════════════════════════
+  FS1 -->|".lis históricos 6 meses"| PV_I2
+  FS2 -->|"ahsaldia"| PV_I1
+
+  %% ═══════════════════════════════════════════════════════
+  %% TABLAS COMPARTIDAS (acceso directo por BD, no gRPC)
+  %% ═══════════════════════════════════════════════════════
+  SH_REGLAS -->|"read-only"| PV_SR
+  SH_FERIADOS -->|"read-only"| PV_SF
+  SH_RB -->|"read-only"| PV_SRB
+
+  %% ═══════════════════════════════════════════════════════
+  %% COMUNICACIÓN ENTRE MICROSERVICIOS  (gRPC — solo lógica Python)
+  %% ═══════════════════════════════════════════════════════
+  PV_GC -->|"gRPC :50051  ParseLisFile"| CG1
+  PV_GC -->|"gRPC :50051  GetDiasHabiles"| CG2
+  PV_GC -->|"gRPC :50051  SendNotification"| CG3
+
+  %% ═══════════════════════════════════════════════════════
+  %% SALIDAS preventiva-svc
+  %% ═══════════════════════════════════════════════════════
+  PV_I3 -->|"PREVENTIVA_*.txt"| CAMPANAS
+  PV_I4 -->|"REPORTE_*.xls"| CAMPANAS
+  CAMPANAS --> ISABEL
+
+  %% ═══════════════════════════════════════════════════════
+  %% ESTILOS
+  %% ═══════════════════════════════════════════════════════
+  classDef cmStyle    fill:#0d2b1a,stroke:#3d9970,color:#7fdbba,stroke-width:1.5px
+  classDef pvStyle    fill:#0d1f2d,stroke:#2e6da4,color:#7eb8e3,stroke-width:1.5px
+  classDef grpcStyle  fill:#1e0d2b,stroke:#8e44ad,color:#c39bd3,stroke-width:1.5px
+  classDef extStyle   fill:#2b2400,stroke:#d4ac0d,color:#f9e07a,stroke-width:1.5px
+  classDef outStyle   fill:#1a1a1a,stroke:#636e72,color:#b2bec3,stroke-width:1.5px
+  classDef dbStyle    fill:#1a0d0d,stroke:#922b21,color:#e88080,stroke-width:1.5px
+  classDef sharedStyle fill:#1a1a0d,stroke:#c9a227,color:#f0d070,stroke-width:2px
+  classDef chainStyle fill:#0d1a2b,stroke:#1a5276,color:#5dade2,stroke-width:1px
+
+  class CM_D1,CM_D2,CM_D3,CM_D4,CM_I1,CM_I2,CM_I3,CM_I4,CM_API cmStyle
+  class PV_D1,PV_D2,PV_D3,PV_D4,PV_D5,PV_I1,PV_I2,PV_I3,PV_I4,PV_I5,PV_API pvStyle
+  class CG1,CG2,CG3,PV_GC grpcStyle
+  class FS1,FS2,RB_SRC,SMTP_EXT extStyle
+  class CAMPANAS,ISABEL outStyle
+  class CM_DB,PV_DB dbStyle
+  class SH_REGLAS,SH_FERIADOS,SH_RB,PV_SR,PV_SF,PV_SRB sharedStyle
+  class PC1,PC2,PC3,PC4,PC5,PC6,PC7,PC8 chainStyle
