@@ -5,7 +5,7 @@ Ensambla todas las dependencias a partir de PreventivaSettings.
 
 from datetime import date
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import Optional, Set
 
 # Reutilización desde carteramora ─────────────────────────────────────────────
 from cobranzas.infrastructure.persistence.repositories.feriados_calendario_repository import (
@@ -42,31 +42,6 @@ from preventiva.application.chain.recblue_handler import RecblueHandler
 from preventiva.application.chain.isabel_handler import IsabelHandler
 from preventiva.application.chain.reporte_handler import ReporteHandler
 from preventiva.application.chain.preventiva_context import PreventivaContext
-
-
-def _resolver_lis_cadetacaco(origen: str):
-    """Retorna función que resuelve rutas de CADETACACO para (anio, mes, dia)."""
-    def _resolver(anio: int, mes: int, dia: int) -> List[Path]:
-        base = Path(origen)
-        patron = f"cartera{dia:02d}{mes:02d}{str(anio)[2:]}b"
-        return sorted(base.glob(f"**/{patron}/cadetacaco*_of_0.lis"))
-    return _resolver
-
-
-def _resolver_lis_camorosico(origen: str):
-    def _resolver(anio: int, mes: int, dia: int) -> List[Path]:
-        base = Path(origen)
-        patron = f"cartera{dia:02d}{mes:02d}{str(anio)[2:]}b"
-        return sorted(base.glob(f"**/{patron}/camorosico*_of_0.lis"))
-    return _resolver
-
-
-def _resolver_ahsaldia(origen: str):
-    def _resolver(anio: int, mes: int, dia: int) -> List[Path]:
-        base = Path(origen)
-        patron = f"saldo{dia:02d}{mes:02d}{str(anio)[2:]}b"
-        return sorted(base.glob(f"**/{patron}/ahsaldia*_of00255.lis"))
-    return _resolver
 
 
 def _cargar_feriados(session_factory, clave: str) -> Set[date]:
@@ -133,11 +108,27 @@ def build_cadena(settings: Optional[PreventivaSettings] = None):
 
     dir_salida = Path(cfg.prev_directorio_resultados)
 
+    # Patrones de archivo parametrizables (HU líneas 142-144). Si el parámetro
+    # está vacío, LisResolver usa los patrones probados de carteramora.
+    pat_cade = params_repo.obtener("CADETACACO_LIS", "")
+    pat_camo = params_repo.obtener("CAMOROSICO_LIS", "")
+    pat_ahsa = params_repo.obtener("AHSALDIA_LIS", "ahsaldia*_of00255.lis")
+
+    lis_resolver = LisResolver(
+        base_lis=Path(cfg.prev_origen_lis),
+        patrones_cadetacaco=[pat_cade] if pat_cade else None,
+        patrones_camorosico=[pat_camo] if pat_camo else None,
+    )
+    ahsaldia_resolver = AhsaldiaResolver(
+        base_ahsaldia=Path(cfg.prev_origen_ahsaldia),
+        patron=pat_ahsa or "ahsaldia*_of00255.lis",
+    )
+
     # Cadena de responsabilidad (orden: 1→2→3→4→5→6→7)
     reporte   = ReporteHandler(reporte_repo=reporte_repo, directorio_salida=dir_salida)
     isabel    = IsabelHandler(directorio_salida=dir_salida)
     recblue   = RecblueHandler(session_factory=sf)
-    saldo     = SaldoHandler(servicio=saldo_svc, resolver_ahsaldia=_resolver_ahsaldia(cfg.prev_origen_ahsaldia))
+    saldo     = SaldoHandler(servicio=saldo_svc, resolver_ahsaldia=ahsaldia_resolver.resolver)
     seleccion = SeleccionHandler(servicio=seleccion_svc)
     historial = HistorialMoraHandler(
         historial_repo=mora_repo,
@@ -145,8 +136,8 @@ def build_cadena(settings: Optional[PreventivaSettings] = None):
         dias_retencion=dias_retencion,
     )
     parse_lis = ParseLisHandler(
-        resolver_cadetacaco=_resolver_lis_cadetacaco(cfg.prev_origen_lis),
-        resolver_camorosico=_resolver_lis_camorosico(cfg.prev_origen_lis),
+        resolver_cadetacaco=lis_resolver.cadetacaco,
+        resolver_camorosico=lis_resolver.camorosico,
     )
 
     isabel.enlazar(reporte)

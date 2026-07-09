@@ -1,6 +1,7 @@
 """Handler 1: Lee los archivos CAMOROSICO y CADETACACO del día."""
 
 import logging
+from datetime import date
 from pathlib import Path
 from typing import Callable, List
 
@@ -22,8 +23,8 @@ class ParseLisHandler(PreventivaHandler):
 
     def __init__(
         self,
-        resolver_cadetacaco: Callable[[int, int, int], List[Path]],
-        resolver_camorosico: Callable[[int, int, int], List[Path]],
+        resolver_cadetacaco: Callable[[date], List[Path]],
+        resolver_camorosico: Callable[[date], List[Path]],
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -31,12 +32,8 @@ class ParseLisHandler(PreventivaHandler):
         self._resolver_camo = resolver_camorosico
 
     def _procesar(self, ctx: PreventivaContext) -> PreventivaContext:
-        anio  = ctx.fecha_ejecucion.year
-        mes   = ctx.fecha_ejecucion.month
-        dia   = ctx.fecha_ejecucion.day
-
-        rutas_cade = self._resolver_cade(anio, mes, dia)
-        rutas_camo = self._resolver_camo(anio, mes, dia)
+        rutas_cade = self._resolver_cade(ctx.fecha_ejecucion)
+        rutas_camo = self._resolver_camo(ctx.fecha_ejecucion)
 
         # HU líneas 139-140: si no se encuentran los archivos, se notifica al
         # usuario y se detiene el proceso (se ejecuta de nuevo manualmente).

@@ -1,6 +1,7 @@
 """Handler 4: Lee AHSALDIA y valida cobertura de cuota."""
 
 import logging
+from datetime import date
 from pathlib import Path
 from typing import Callable, List
 
@@ -17,7 +18,7 @@ class SaldoHandler(PreventivaHandler):
     def __init__(
         self,
         servicio: ValidarSaldoService,
-        resolver_ahsaldia: Callable[[int, int, int], List[Path]],
+        resolver_ahsaldia: Callable[[date], List[Path]],
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -25,11 +26,7 @@ class SaldoHandler(PreventivaHandler):
         self._resolver = resolver_ahsaldia
 
     def _procesar(self, ctx: PreventivaContext) -> PreventivaContext:
-        for path in self._resolver(
-            ctx.fecha_ejecucion.year,
-            ctx.fecha_ejecucion.month,
-            ctx.fecha_ejecucion.day,
-        ):
+        for path in self._resolver(ctx.fecha_ejecucion):
             ctx.registros_ahsaldia.extend(leer_ahsaldia(path))
 
         ctx.saldos = saldos_por_identificacion(ctx.registros_ahsaldia)

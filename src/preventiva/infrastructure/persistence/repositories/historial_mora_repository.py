@@ -69,3 +69,14 @@ class SqlAlchemyHistorialMoraRepository(HistorialMoraPort):
             )
             session.commit()
             return int(resultado.rowcount or 0)
+
+    def contar_por_fecha(self, fecha_corte: date) -> int:
+        """Cuántos registros existen para la fecha dada (para evitar duplicados en backfill)."""
+        with self._sf() as session:
+            return int(
+                session.execute(
+                    select(func.count()).where(
+                        HistorialMoraDetalle.fecha_corte == fecha_corte
+                    )
+                ).scalar() or 0
+            )

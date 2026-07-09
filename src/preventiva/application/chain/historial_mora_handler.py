@@ -50,20 +50,31 @@ class HistorialMoraHandler(PreventivaHandler):
             if r.telefono:
                 ctx.telefonos[r.identificacion] = r.telefono
 
-        # Ventana de 6 meses
+        # Ventana de N meses (HU líneas 185-192):
+        #   fecha_hasta = fecha_ejecucion  (incluye el archivo de hoy recién guardado)
+        #   fecha_desde = mismo día (numero_meses-1) meses atrás
+        #   Ejemplo HU: ejecución 5-may-2026 → ventana 5-dic-2025 … 5-may-2026
+        #   Conteo: may(0) ← abr(1) ← mar(2) ← feb(3) ← ene(4) ← dic(5) = 5 pasos = 5-dic
         fecha_hasta = ctx.fecha_ejecucion
-        anio_desde, mes_desde = fecha_hasta.year, fecha_hasta.month
+        anio_d, mes_d = fecha_hasta.year, fecha_hasta.month
+        dia_d = fecha_hasta.day
         for _ in range(self._numero_meses - 1):
-            mes_desde -= 1
-            if mes_desde == 0:
-                mes_desde = 12
-                anio_desde -= 1
-        fecha_desde = date(anio_desde, mes_desde, 1)
+            mes_d -= 1
+            if mes_d == 0:
+                mes_d = 12
+                anio_d -= 1
+        # Ajusta si el mes destino tiene menos días (ej. 31-mar → 28-feb)
+        import calendar
+        ultimo_dia = calendar.monthrange(anio_d, mes_d)[1]
+        fecha_desde = date(anio_d, mes_d, min(dia_d, ultimo_dia))
 
         operaciones = [r.operacion for r in ctx.registros_cadetacaco]
         ctx.promedios_mora = self._repo.obtener_promedio_por_operacion(
             operaciones, fecha_desde, fecha_hasta
         )
 
-        log.info("HistorialMora: promedios calculados para %d operaciones", len(ctx.promedios_mora))
+        log.info(
+            "HistorialMora: ventana %s → %s  |  promedios para %d operaciones",
+            fecha_desde, fecha_hasta, len(ctx.promedios_mora),
+        )
         return ctx
