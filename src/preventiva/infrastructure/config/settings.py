@@ -40,19 +40,12 @@ class PreventivaSettings(BaseSettings):
     )
 
     # ── Scheduler ─────────────────────────────────────────────────────────
-    prev_ejecucion_corte: bool = Field(
-        default=True,
-        alias="PREV_EJECUCION_CORTE",
-        description="true = usa tabla prev_dias_corte; false = evaluación diaria",
-    )
-    # Hora de disparo del job diario (0-23)
+    # El scheduler corre todos los días a esta hora. La lógica de qué días
+    # ejecutar el pipeline la determina la HU (2 días antes del corte + el
+    # día del corte), consultando dbo.catalogo y los feriados vigentes.
     prev_scheduler_hora: int = Field(default=6, alias="PREV_SCHEDULER_HORA")
-    # Minuto de disparo del job diario (0-59)
     prev_scheduler_minuto: int = Field(default=30, alias="PREV_SCHEDULER_MINUTO")
-    # Zona horaria del scheduler (p.ej. America/Guayaquil)
     prev_scheduler_tz: str = Field(default="America/Guayaquil", alias="PREV_SCHEDULER_TZ")
-    # Días de la semana en que corre (cron: mon,tue,wed,thu,fri)
-    prev_scheduler_dias: str = Field(default="mon,tue,wed,thu,fri", alias="PREV_SCHEDULER_DIAS")
 
     # ── Criterios de selección (valores base; se leen también de dbo.parametros) ─
     prev_numero_meses: int = Field(default=6, alias="PREV_NUMERO_MESES")

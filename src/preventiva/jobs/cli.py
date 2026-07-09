@@ -232,10 +232,6 @@ def cargar_historico(
     help="Sobreescribe PREV_SCHEDULER_TZ del .env (p.ej. America/Guayaquil).",
 )
 @click.option(
-    "--dias", default=None,
-    help="Sobreescribe PREV_SCHEDULER_DIAS del .env (p.ej. mon,tue,wed,thu,fri).",
-)
-@click.option(
     "--log-level", default=None,
     help="Nivel de log (DEBUG|INFO|WARNING). Defecto: LOG_LEVEL del .env.",
 )
@@ -243,7 +239,6 @@ def scheduler(
     hora: Optional[int],
     minuto: Optional[int],
     tz: Optional[str],
-    dias: Optional[str],
     log_level: Optional[str],
 ) -> None:
     """
@@ -251,31 +246,38 @@ def scheduler(
 
     \b
     Configuración en .env:
-      PREV_SCHEDULER_HORA=6              ← hora de disparo (0-23)
-      PREV_SCHEDULER_MINUTO=30           ← minuto de disparo (0-59)
+      PREV_SCHEDULER_HORA=6        ← hora de arranque del job diario (0-23)
+      PREV_SCHEDULER_MINUTO=30     ← minuto de arranque (0-59)
       PREV_SCHEDULER_TZ=America/Guayaquil
-      PREV_SCHEDULER_DIAS=mon,tue,wed,thu,fri
 
-    Los parámetros de línea de comandos sobreescriben el .env temporalmente.
-    El proceso se mantiene corriendo hasta recibir Ctrl+C o SIGTERM.
+    \b
+    La lógica de ejecución sigue estrictamente la HU:
+      - Corre todos los días a la hora configurada.
+      - Internamente decide si ejecutar según los cortes activos en
+        dbo.catalogo (clave prev_dias_corte): ejecuta 2 días antes del
+        corte y el propio día del corte (ajustando feriados).
+      - Si hoy no corresponde a ningún corte, no hace nada.
+
+    \b
+    Para ejecución fuera del horario usa:
+      preventiva ejecutar [--fecha DDMMAAAA] [--corte N]
+    O desde Postman:
+      POST /ejecutar-preventiva
     """
     cfg = PreventivaSettings()
 
-    # Sobreescritura puntual desde CLI (sin tocar el .env)
     if hora is not None:
         cfg.prev_scheduler_hora = hora
     if minuto is not None:
         cfg.prev_scheduler_minuto = minuto
     if tz is not None:
         cfg.prev_scheduler_tz = tz
-    if dias is not None:
-        cfg.prev_scheduler_dias = dias
 
     _setup_logging(log_level or cfg.log_level)
 
     click.echo(
-        f"Scheduler preventiva — {cfg.prev_scheduler_hora:02d}:{cfg.prev_scheduler_minuto:02d} "
-        f"[{cfg.prev_scheduler_dias}]  tz={cfg.prev_scheduler_tz}"
+        f"Scheduler preventiva — arranque {cfg.prev_scheduler_hora:02d}:{cfg.prev_scheduler_minuto:02d} "
+        f"tz={cfg.prev_scheduler_tz}  |  lógica HU: 2 días antes del corte + día corte"
     )
 
     from preventiva.jobs.scheduler import iniciar_scheduler
