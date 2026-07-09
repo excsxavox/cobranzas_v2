@@ -1,0 +1,35 @@
+# Entorno y secretos
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Datos locales y salidas de proceso
+data/*.sqlite
+data/*.db
+destino/
+docsmora/
+logs/
+pid/
+
+# Catálogos con datos reales (generar con plantilla-*)
+data/catalogo/*.xlsx
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+Desktop.ini
+
+# Artefactos temporales
+contenido_archivos_python_*.txt
