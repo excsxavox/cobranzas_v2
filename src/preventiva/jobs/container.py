@@ -16,6 +16,7 @@ from cobranzas.infrastructure.adapters.smtp_correo_adapter import SmtpCorreoAdap
 # ─────────────────────────────────────────────────────────────────────────────
 
 from preventiva.infrastructure.config.settings import PreventivaSettings
+from preventiva.infrastructure.config.lis_resolver import AhsaldiaResolver, LisResolver
 from preventiva.infrastructure.persistence.database import create_engine_preventiva, init_database
 from preventiva.infrastructure.persistence.repositories.historial_proceso_repository import (
     HistorialProcesoRepository,
