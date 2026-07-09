@@ -100,6 +100,13 @@ def create_app(settings: Optional[PreventivaSettings] = None) -> FastAPI:
         return EjecutarPreventivaResponse(
             proceso_cod=ctx.proceso_cod,
             estado="OK" if ctx.ok else "ERROR",
+            fecha_ejecucion=ctx.fecha_ejecucion.strftime("%d/%m/%Y"),
+            ventana_historico_desde=(
+                ctx.ventana_desde.strftime("%d/%m/%Y") if ctx.ventana_desde else None
+            ),
+            ventana_historico_hasta=(
+                ctx.ventana_hasta.strftime("%d/%m/%Y") if ctx.ventana_hasta else None
+            ),
             seleccionados=len(ctx.seleccionados),
             archivo_isabel=str(ctx.ruta_isabel) if ctx.ruta_isabel else None,
             archivo_reporte=str(ctx.ruta_reporte) if ctx.ruta_reporte else None,

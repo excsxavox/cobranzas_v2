@@ -73,6 +73,10 @@ class HistorialMoraHandler(PreventivaHandler):
             operaciones, fecha_desde, fecha_hasta
         )
 
+        # Publica la ventana en el contexto para que el API la devuelva
+        ctx.ventana_desde = fecha_desde
+        ctx.ventana_hasta = fecha_hasta
+
         log.info(
             "HistorialMora: ventana %s → %s  |  promedios para %d operaciones",
             fecha_desde, fecha_hasta, len(ctx.promedios_mora),

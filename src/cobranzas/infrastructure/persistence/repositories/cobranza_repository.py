@@ -2,9 +2,8 @@ import logging
 from datetime import date, datetime
 from typing import List, Optional, Set
 
-from sqlalchemy import delete, select
-
 from sqlalchemy import delete, select, func, text
+from sqlalchemy.orm import sessionmaker, Session
 
 from cobranzas.domain.models.credito import Credito
 from cobranzas.domain.ports.cobranza_db_repository import CobranzaDbRepositoryPort

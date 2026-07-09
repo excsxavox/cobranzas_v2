@@ -46,3 +46,7 @@ class PreventivaContext:
     # Archivos generados
     ruta_isabel:  Optional[Path] = None
     ruta_reporte: Optional[Path] = None
+
+    # Ventana de historial utilizada (la escribe HistorialMoraHandler)
+    ventana_desde: Optional[date] = None
+    ventana_hasta: Optional[date] = None
