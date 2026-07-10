@@ -25,6 +25,7 @@ class PreventivaContext:
     # Estado del pipeline
     ok: bool = True
     mensaje_error: str = ""
+    paso_fallido: str = ""
 
     # Datos leídos de archivos .lis
     registros_cadetacaco: List[RegistroCadetacaco] = field(default_factory=list)

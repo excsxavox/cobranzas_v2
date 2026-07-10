@@ -17,10 +17,16 @@ Uso desde otros módulos (cobranzas, preventiva):
 
 from notificaciones.domain.models.resultado_envio import ResultadoEnvio
 from notificaciones.domain.services.notificacion_service import NotificacionService
+from notificaciones.infrastructure.clients.notificaciones_api_client import (
+    NotificacionesApiClient,
+    build_notificaciones_api_client,
+)
 from notificaciones.jobs.container import build_notificacion_service
 
 __all__ = [
     "NotificacionService",
+    "NotificacionesApiClient",
     "ResultadoEnvio",
     "build_notificacion_service",
+    "build_notificaciones_api_client",
 ]

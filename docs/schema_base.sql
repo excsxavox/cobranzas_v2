@@ -438,7 +438,11 @@ USING (VALUES
    'pgalarza@coop23dejulio.fin.ec;amontero@coop23dejulio.fin.ec', NULL,
    'Estimados, la Gestión Preventiva del {fecha} finalizó correctamente.' + CHAR(13) +
    'Gestión número: {numero_gestion}. Se adjuntan los archivos generados.' + CHAR(13) +
-   'proceso_cod: {proceso_cod}'))
+   'proceso_cod: {proceso_cod}'),
+  ('cartera_mora', 'Error',
+   'pgalarza@coop23dejulio.fin.ec;amontero@coop23dejulio.fin.ec', NULL,
+   'Se detectó un error en el procesamiento de cartera en mora.' + CHAR(13) +
+   'Origen: {paso}' + CHAR(13) + 'Detalle:' + CHAR(13) + '{causa}'))
 AS s (id_proceso, estado, correo_para, correo_copia, plantilla_correo)
 ON t.id_proceso = s.id_proceso AND t.estado = s.estado
 WHEN NOT MATCHED THEN INSERT (id_proceso, estado, correo_para, correo_copia, plantilla_correo, activo)

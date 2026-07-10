@@ -12,7 +12,6 @@ from cobranzas.infrastructure.persistence.repositories.feriados_calendario_repos
     SqlAlchemyFeriadosCalendarioRepository,
 )
 from cobranzas.infrastructure.persistence.session import get_session_factory
-from cobranzas.infrastructure.adapters.smtp_correo_adapter import SmtpCorreoAdapter
 # ─────────────────────────────────────────────────────────────────────────────
 
 from preventiva.infrastructure.config.settings import PreventivaSettings

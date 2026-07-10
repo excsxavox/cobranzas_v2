@@ -8,8 +8,9 @@ Sistema Python (arquitectura hexagonal + cadena de responsabilidad) para gestió
 
 | Módulo | Paquete | Puerto | Propósito |
 |--------|---------|--------|-----------|
-| **Cartera Mora** | `cobranzas` | — | Procesa cartera vencida desde archivos `.lis` del core y genera asignaciones diarias |
+| **Cartera Mora** | `cobranzas` | `:8000` | Procesa cartera vencida desde archivos `.lis` del core y genera asignaciones diarias |
 | **Gestión Preventiva** | `preventiva` | `:8001` | Identifica clientes en riesgo antes del vencimiento y genera base para Isabel |
+| **Notificaciones** | `notificaciones` | `:8002` | Servicio compartido de correo (catálogo `dbo.notificaciones` + SMTP) |
 
 ---
 
@@ -27,12 +28,17 @@ carteramora/
 │   │   ├── application/chain/    #   Pipeline (cadena de responsabilidad)
 │   │   └── infrastructure/       #   BD, adaptadores, configuración
 │   │
-│   └── preventiva/               # Módulo Gestión Preventiva (EPICA GRC-03)
-│       ├── domain/               #   Modelos, puertos y servicios
-│       ├── application/chain/    #   Pipeline de 7 pasos
-│       ├── infrastructure/       #   BD, adaptadores, configuración
-│       ├── api/                  #   API REST FastAPI (:8001)
-│       └── jobs/                 #   Scheduler, runner, CLI, container DI
+│   ├── preventiva/               # Módulo Gestión Preventiva (EPICA GRC-03)
+│   │   ├── domain/               #   Modelos, puertos y servicios
+│   │   ├── application/chain/    #   Pipeline de 7 pasos
+│   │   ├── infrastructure/       #   BD, adaptadores, configuración
+│   │   ├── api/                  #   API REST FastAPI (:8001)
+│   │   └── jobs/                 #   Scheduler, runner, CLI, container DI
+│   │
+│   └── notificaciones/           # Módulo compartido de correo
+│       ├── api/                  #   API REST FastAPI (:8002)
+│       ├── domain/               #   NotificacionService, plantillas
+│       └── infrastructure/       #   SMTP, catálogo SQL, cliente HTTP
 │
 ├── docs/
 │   ├── schema_base.sql           # DDL completo (carteramora + preventiva)
@@ -151,9 +157,18 @@ El reporte Excel incluye: fecha proceso, nombre, cédula, número de operación,
 
 ### Procesos en producción
 
-Se deben mantener **2 procesos corriendo simultáneamente**:
+Se deben mantener **3 procesos corriendo simultáneamente** (preventiva + notificaciones):
 
-#### Proceso 1 — API REST
+#### Proceso 0 — API Notificaciones (compartida)
+
+```powershell
+notificaciones api
+# Levanta en http://127.0.0.1:8002
+```
+
+Consume `dbo.notificaciones` + `SMTP_*`. Preventiva y cobranzas envían correos vía `NOTIFICACIONES_API_URL`.
+
+#### Proceso 1 — API REST Preventiva
 
 ```powershell
 preventiva api

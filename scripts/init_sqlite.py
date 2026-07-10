@@ -197,10 +197,16 @@ with Session() as session:
     notificaciones_seed = [
         ("general", "Error",
          "pgalarza@coop23dejulio.fin.ec;amontero@coop23dejulio.fin.ec",
-         "Bot Gestión Preventiva — ERROR en paso: {paso}. Causa: {causa}."),
+         "Bot Gestión Preventiva — ERROR en paso: {paso}. Causa: {causa}. proceso_cod: {proceso_cod}"),
         ("general", "OK",
          "pgalarza@coop23dejulio.fin.ec;amontero@coop23dejulio.fin.ec",
          "Bot Gestión Preventiva ejecutado correctamente. proceso_cod: {proceso_cod}"),
+        ("proceso_completo", "OK",
+         "pgalarza@coop23dejulio.fin.ec;amontero@coop23dejulio.fin.ec",
+         "Gestión Preventiva del {fecha} finalizó correctamente. Gestión: {numero_gestion}. proceso_cod: {proceso_cod}"),
+        ("cartera_mora", "Error",
+         "pgalarza@coop23dejulio.fin.ec;amontero@coop23dejulio.fin.ec",
+         "Error en cartera mora — origen: {paso}. Detalle: {causa}"),
     ]
     for id_proc, estado, correo_para, plantilla in notificaciones_seed:
         existe = session.execute(

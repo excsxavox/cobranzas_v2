@@ -62,6 +62,7 @@ class ParseLisHandler(PreventivaHandler):
             faltantes.append("CAMOROSICO")
         if faltantes:
             ctx.ok = False
+            ctx.paso_fallido = "parse_lis"
             ctx.mensaje_error = (
                 "No se encontraron los archivos requeridos: "
                 + ", ".join(faltantes)
@@ -91,6 +92,7 @@ class ParseLisHandler(PreventivaHandler):
         # las columnas no coinciden con las cabeceras configuradas.
         if len(ctx.registros_cadetacaco) == 0:
             ctx.ok = False
+            ctx.paso_fallido = "parse_lis"
             ctx.mensaje_error = (
                 f"CADETACACO ({rutas_cade[0].name}) no contiene registros válidos. "
                 "Verifique que las cabeceras del archivo coincidan con las columnas "
