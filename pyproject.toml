@@ -30,15 +30,16 @@ api = [
 ]
 
 [project.scripts]
-cobranzas  = "cobranzas.jobs.cli:main"
-preventiva = "preventiva.jobs.cli:main"
+cobranzas       = "cobranzas.jobs.cli:main"
+preventiva      = "preventiva.jobs.cli:main"
+notificaciones  = "notificaciones.jobs.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/cobranzas", "src/preventiva"]
+packages = ["src/cobranzas", "src/preventiva", "src/notificaciones"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
 
 [tool.coverage.run]
-source = ["cobranzas", "preventiva"]
+source = ["cobranzas", "preventiva", "notificaciones"]
