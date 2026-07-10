@@ -1,21 +1,11 @@
-"""Utilidad central para alertar errores del pipeline por correo."""
+"""Utilidad central para alertar errores del pipeline vía API de notificaciones."""
 
 import traceback
 from typing import Optional, Sequence
 
-from cobranzas.domain.models.notificacion_resultado import NotificacionResultado
 from cobranzas.infrastructure.config.settings import Settings
 from notificaciones import build_notificaciones_api_client
 from notificaciones.domain.models.resultado_envio import ResultadoEnvio
-
-
-def _resultado_desde_api(resultado: ResultadoEnvio) -> NotificacionResultado:
-    return NotificacionResultado(
-        enviado=resultado.enviado,
-        destinatarios=list(resultado.destinatarios),
-        omitido_motivo=resultado.omitido_motivo,
-        errores=list(resultado.errores),
-    )
 
 
 def notificar_error_pipeline(
@@ -25,12 +15,12 @@ def notificar_error_pipeline(
     *,
     fecha_corte: str = "",
     exc: Optional[BaseException] = None,
-) -> NotificacionResultado:
+) -> ResultadoEnvio:
     """
-    Envía alerta de error vía API compartida de notificaciones (catálogo BD).
+    Envía alerta de error vía API compartida (:8002) usando catálogo dbo.notificaciones.
     """
     if not settings.notificaciones_errores_habilitado:
-        return NotificacionResultado(omitido_motivo="notificaciones deshabilitadas")
+        return ResultadoEnvio(omitido_motivo="notificaciones deshabilitadas")
 
     traceback_text = ""
     if exc is not None:
@@ -46,10 +36,9 @@ def notificar_error_pipeline(
     causa = "\n".join(causa_partes) if causa_partes else "Sin detalle adicional"
 
     client = build_notificaciones_api_client()
-    resultado = client.notificar_error(
+    return client.notificar_error(
         id_proceso="cartera_mora",
         paso=origen,
         causa=causa,
         asunto_prefix=settings.notificaciones_asunto_prefijo,
     )
-    return _resultado_desde_api(resultado)
