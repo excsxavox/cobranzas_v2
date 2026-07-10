@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Optional
 
-from sqlalchemy import BigInteger, Date, ForeignKey, Integer, Numeric, String
+from sqlalchemy import Date, ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from preventiva.infrastructure.persistence.base import Base
@@ -10,7 +10,7 @@ from preventiva.infrastructure.persistence.base import Base
 class ReportePreventiva(Base):
     __tablename__ = "reporte_preventiva"
 
-    id:               Mapped[int]            = mapped_column(BigInteger,    primary_key=True, autoincrement=True)
+    id:               Mapped[int]            = mapped_column(Integer, primary_key=True, autoincrement=True)
     proceso_cod:      Mapped[str]            = mapped_column(String(14),    ForeignKey("historial_proceso.proceso_cod"), nullable=False)
     fecha_proceso:    Mapped[date]           = mapped_column(Date,          nullable=False)
     nombre:           Mapped[Optional[str]]  = mapped_column(String(200),   nullable=True)

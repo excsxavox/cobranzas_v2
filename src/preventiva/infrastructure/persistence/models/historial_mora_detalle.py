@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Optional
 
-from sqlalchemy import BigInteger, Date, ForeignKey, Integer, String
+from sqlalchemy import Date, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from preventiva.infrastructure.persistence.base import Base
@@ -10,7 +10,7 @@ from preventiva.infrastructure.persistence.base import Base
 class HistorialMoraDetalle(Base):
     __tablename__ = "historial_mora_detalle"
 
-    id:             Mapped[int]           = mapped_column(BigInteger,  primary_key=True, autoincrement=True)
+    id:             Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
     proceso_cod:    Mapped[str]           = mapped_column(String(14),  ForeignKey("historial_proceso.proceso_cod"), nullable=False)
     operacion:      Mapped[str]           = mapped_column(String(30),  nullable=False)
     identificacion: Mapped[Optional[str]] = mapped_column(String(20),  nullable=True)

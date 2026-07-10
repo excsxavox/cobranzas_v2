@@ -4,12 +4,20 @@ import math
 from datetime import date
 from typing import Dict, List
 
-from sqlalchemy import delete, func, select, String as sqlalchemy_String
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import sessionmaker
 
 from preventiva.domain.ports.historial_mora_port import HistorialMoraPort
 from preventiva.domain.models.registro_lis import RegistroCamorosico
 from preventiva.infrastructure.persistence.models.historial_mora_detalle import HistorialMoraDetalle
+
+# SQLite acepta máximo 999 variables por consulta; usamos 900 para margen seguro.
+_CHUNK = 900
+
+
+def _chunks(lst: List, n: int):
+    for i in range(0, len(lst), n):
+        yield lst[i: i + n]
 
 
 class SqlAlchemyHistorialMoraRepository(HistorialMoraPort):
@@ -42,23 +50,35 @@ class SqlAlchemyHistorialMoraRepository(HistorialMoraPort):
     ) -> Dict[str, int]:
         if not operaciones:
             return {}
+
+        # Acumuladores para calcular el promedio ponderado en Python
+        suma: Dict[str, float] = {}
+        conteo: Dict[str, int] = {}
+
         with self._sf() as session:
-            filas = session.execute(
-                select(
-                    HistorialMoraDetalle.operacion,
-                    func.avg(HistorialMoraDetalle.dias_mora).label("promedio"),
-                )
-                .where(
-                    HistorialMoraDetalle.operacion.in_(operaciones),
-                    HistorialMoraDetalle.fecha_corte >= fecha_desde,
-                    HistorialMoraDetalle.fecha_corte <= fecha_hasta,
-                )
-                .group_by(HistorialMoraDetalle.operacion)
-            ).all()
+            for chunk in _chunks(operaciones, _CHUNK):
+                filas = session.execute(
+                    select(
+                        HistorialMoraDetalle.operacion,
+                        func.avg(HistorialMoraDetalle.dias_mora).label("promedio"),
+                        func.count(HistorialMoraDetalle.id).label("cnt"),
+                    )
+                    .where(
+                        HistorialMoraDetalle.operacion.in_(chunk),
+                        HistorialMoraDetalle.fecha_corte >= fecha_desde,
+                        HistorialMoraDetalle.fecha_corte <= fecha_hasta,
+                    )
+                    .group_by(HistorialMoraDetalle.operacion)
+                ).all()
+
+                for fila in filas:
+                    cnt = int(fila.cnt or 1)
+                    suma[fila.operacion] = suma.get(fila.operacion, 0.0) + (fila.promedio or 0) * cnt
+                    conteo[fila.operacion] = conteo.get(fila.operacion, 0) + cnt
 
         return {
-            fila.operacion: math.floor(fila.promedio or 0)
-            for fila in filas
+            op: math.floor(suma[op] / conteo[op]) if conteo[op] else 0
+            for op in suma
         }
 
     def purgar_anteriores_a(self, fecha_limite: date) -> int:
@@ -78,36 +98,41 @@ class SqlAlchemyHistorialMoraRepository(HistorialMoraPort):
         dias_mora_minimo: int = 1,
     ) -> Dict[str, int]:
         """
-        Para C2 (pago tardío recurrente): cuenta cuántos meses distintos
-        dentro de la ventana aparece cada operación con dias_mora >= dias_mora_minimo.
-        Retorna {operacion: cantidad_de_meses_con_mora}.
+        Para C2: cuenta cuántos meses distintos aparece cada operación
+        con dias_mora >= dias_mora_minimo dentro de la ventana.
+        Procesa en Python para evitar incompatibilidades entre SQLite y SQL Server.
         """
         if not operaciones:
             return {}
-        with self._sf() as session:
-            from sqlalchemy import distinct, extract
-            filas = session.execute(
-                select(
-                    HistorialMoraDetalle.operacion,
-                    func.count(
-                        distinct(
-                            func.concat(
-                                func.cast(extract("year",  HistorialMoraDetalle.fecha_corte), sqlalchemy_String),
-                                func.cast(extract("month", HistorialMoraDetalle.fecha_corte), sqlalchemy_String),
-                            )
-                        )
-                    ).label("meses"),
-                )
-                .where(
-                    HistorialMoraDetalle.operacion.in_(operaciones),
-                    HistorialMoraDetalle.fecha_corte >= fecha_desde,
-                    HistorialMoraDetalle.fecha_corte <= fecha_hasta,
-                    HistorialMoraDetalle.dias_mora >= dias_mora_minimo,
-                )
-                .group_by(HistorialMoraDetalle.operacion)
-            ).all()
 
-        return {fila.operacion: int(fila.meses or 0) for fila in filas}
+        # {operacion: set(año-mes)}
+        meses_por_op: Dict[str, set] = {}
+
+        with self._sf() as session:
+            for chunk in _chunks(operaciones, _CHUNK):
+                filas = session.execute(
+                    select(
+                        HistorialMoraDetalle.operacion,
+                        HistorialMoraDetalle.fecha_corte,
+                    )
+                    .where(
+                        HistorialMoraDetalle.operacion.in_(chunk),
+                        HistorialMoraDetalle.fecha_corte >= fecha_desde,
+                        HistorialMoraDetalle.fecha_corte <= fecha_hasta,
+                        HistorialMoraDetalle.dias_mora >= dias_mora_minimo,
+                    )
+                ).all()
+
+                for fila in filas:
+                    fc: date = fila.fecha_corte
+                    # fecha_corte puede llegar como string desde SQLite
+                    if isinstance(fc, str):
+                        from datetime import datetime as _dt
+                        fc = _dt.strptime(fc[:10], "%Y-%m-%d").date()
+                    clave = f"{fc.year}-{fc.month:02d}"
+                    meses_por_op.setdefault(fila.operacion, set()).add(clave)
+
+        return {op: len(meses) for op, meses in meses_por_op.items()}
 
     def contar_por_fecha(self, fecha_corte: date) -> int:
         """Cuántos registros existen para la fecha dada (para evitar duplicados en backfill)."""

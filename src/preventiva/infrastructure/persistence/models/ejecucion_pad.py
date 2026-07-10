@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from preventiva.infrastructure.persistence.base import Base
@@ -10,7 +10,7 @@ from preventiva.infrastructure.persistence.base import Base
 class EjecucionPad(Base):
     __tablename__ = "ejecucion_pad"
 
-    id:              Mapped[int]           = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id:              Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
     proceso_cod:     Mapped[str]           = mapped_column(String(14), ForeignKey("historial_proceso.proceso_cod"), nullable=False)
     paso_ejecucion:  Mapped[str]           = mapped_column(String(100), nullable=False)
     estado:          Mapped[str]           = mapped_column(String(10),  nullable=False)

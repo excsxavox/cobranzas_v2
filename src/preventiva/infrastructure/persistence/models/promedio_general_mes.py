@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Numeric, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Date, DateTime, Numeric, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from preventiva.infrastructure.persistence.base import Base
@@ -10,7 +10,7 @@ from preventiva.infrastructure.persistence.base import Base
 class PromedioGeneralMes(Base):
     __tablename__ = "promedio_general_mes"
 
-    id:                   Mapped[int]            = mapped_column(BigInteger,    primary_key=True, autoincrement=True)
+    id:                   Mapped[int]            = mapped_column(Integer, primary_key=True, autoincrement=True)
     proceso_cod:          Mapped[str]            = mapped_column(String(14),    ForeignKey("historial_proceso.proceso_cod"), nullable=False)
     dia_corte:            Mapped[Optional[int]]  = mapped_column(Integer,       nullable=True)
     operacion:            Mapped[str]            = mapped_column(String(30),    nullable=False)

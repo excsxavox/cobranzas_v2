@@ -261,7 +261,7 @@ Solo se registran las columnas que cambian; las demás usan el default.
 |---|---|---|
 | `CADETACACO_LIS` | Patrón del archivo CADETACACO | `cadetacaco_cie{fecha}of_0.lis` |
 | `CAMOROSICO_LIS` | Patrón del archivo CAMOROSICO | `camorosico_{fecha}.of_0.lis` |
-| `AHSALDIA_LIS` | Patrón del archivo AHSALDIA | `ahsaldia*_of00255.lis` |
+| `AHSALDIA_LIS` | Patrón del archivo AHSALDIA | `_{fecha}_*_of00255*` |
 
 Use `{fecha}` como marcador del MMDDYYYY dentro del patrón. Si el parámetro está vacío, se usan los patrones heredados de `carteramora`.
 

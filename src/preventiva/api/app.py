@@ -373,3 +373,13 @@ def create_app(settings: Optional[PreventivaSettings] = None) -> FastAPI:
             )
 
     return app
+
+
+# Instancia global para uvicorn: uvicorn preventiva.api.app:app
+# Se crea aquí con manejo de error para no romper el import si falla la BD
+try:
+    app = create_app()
+except Exception as _e:
+    import logging as _logging
+    _logging.getLogger("preventiva.api").error("Error al crear la app: %s", _e)
+    raise

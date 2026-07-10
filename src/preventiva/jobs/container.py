@@ -115,7 +115,7 @@ def build_cadena(settings: Optional[PreventivaSettings] = None):
     # está vacío, LisResolver usa los patrones probados de carteramora.
     pat_cade = params_repo.obtener("CADETACACO_LIS", "")
     pat_camo = params_repo.obtener("CAMOROSICO_LIS", "")
-    pat_ahsa = params_repo.obtener("AHSALDIA_LIS", "ahsaldia*_of00255.lis")
+    pat_ahsa = params_repo.obtener("AHSALDIA_LIS", "_{fecha}_*_of00255*")
 
     # Cabeceras de columnas parametrizables (HU líneas 167-168).
     # Si COBIS actualiza los nombres de columna, se ajusta en dbo.parametros
@@ -170,7 +170,7 @@ def build_cadena(settings: Optional[PreventivaSettings] = None):
         cortes_activos=cortes_activos,
     )
     isabel    = IsabelHandler(directorio_salida=dir_salida)
-    recblue   = RecblueHandler(session_factory=sf)
+    recblue   = RecblueHandler(session_factory=sf, tabla=params_repo.obtener("recblue", "credito_rb"))
     saldo     = SaldoHandler(servicio=saldo_svc, resolver_ahsaldia=ahsaldia_resolver.resolver)
     seleccion = SeleccionHandler(servicio=seleccion_svc)
     historial = HistorialMoraHandler(

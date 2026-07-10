@@ -81,16 +81,32 @@ class LisResolver:
 
     def cadetacaco(self, fecha: date) -> List[Path]:
         ftxt = fecha_corte_mmddyyyy(fecha)
-        return _buscar(
+        # Busca primero en la subcarpeta estructurada (producción)
+        resultado = _buscar(
             self._carpeta_lote(fecha),
             self._pat_cade,
             ftxt,
             patrones_legacy=PATRONES_CADETACACO_LEGACY,
         )
+        # Fallback: busca recursivamente en la raíz (pruebas locales)
+        if not resultado:
+            resultado = [
+                p for patron in self._pat_cade
+                for p in self._base.glob(f"**/{patron.format(fecha=ftxt)}")
+                if p.is_file() and not p.name.startswith("~$")
+            ]
+        return resultado
 
     def camorosico(self, fecha: date) -> List[Path]:
         ftxt = fecha_corte_mmddyyyy(fecha)
-        return _buscar(self._carpeta_lote(fecha), self._pat_camo, ftxt)
+        resultado = _buscar(self._carpeta_lote(fecha), self._pat_camo, ftxt)
+        if not resultado:
+            resultado = [
+                p for patron in self._pat_camo
+                for p in self._base.glob(f"**/{patron.format(fecha=ftxt)}")
+                if p.is_file() and not p.name.startswith("~$")
+            ]
+        return resultado
 
 
 class AhsaldiaResolver:
@@ -103,7 +119,7 @@ class AhsaldiaResolver:
     def __init__(
         self,
         base_ahsaldia: Path,
-        patron: str = "ahsaldia*_of00255.lis",
+        patron: str = "_{fecha}_*_of00255*",
     ) -> None:
         self._base = Path(base_ahsaldia)
         self._patron = patron

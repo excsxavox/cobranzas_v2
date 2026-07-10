@@ -1,11 +1,21 @@
 """
 Lee archivos CADETACACO .lis y retorna RegistroCadetacaco[].
 
-Reutiliza leer_lineas_archivo y helpers de parseo de cobranzas.
+Reutiliza leer_lineas_archivo y normalizar_encabezados de carteramora.
+Las cabeceras se normalizan a snake_case (igual que tab_lis_staging_reader)
+para ser robustos ante cambios de encoding, acentos o versiones del core.
+
+Mapeo normalizado de columnas:
+  "OPERACIÓN"       → "operacion"
+  "IDENTIFICACIÓN"  → "identificacion"
+  "NOMBRE SOCIO"    → "nombre_socio"
+  "TIPO DE OPERACIÓN"→ "tipo_de_operacion"
+  "DIA DE PAGO"     → "dia_de_pago"
+  "VALOR CUOTA"     → "valor_cuota"
+  "DÍAS MORA"       → "dias_mora"
+  "FECHA CONCESIÓN" → "fecha_concesion"
 """
 
-import csv
-import io
 import logging
 from datetime import date
 from pathlib import Path
@@ -17,22 +27,31 @@ from cobranzas.infrastructure.adapters.parser_comun import (
     parse_int,
     parse_str,
 )
+from cobranzas.domain.schemas.tab_schema import normalizar_encabezados
 from cobranzas.domain.services.dias_habiles_service import parse_fecha_cadetacaco
 
 from preventiva.domain.models.registro_lis import RegistroCadetacaco
 
 log = logging.getLogger("preventiva.adapters.cadetacaco")
 
-_COL_DEFAULTS = {
-    "operacion":       "OPERACIÓN",
-    "identificacion":  "IDENTIFICACIÓN",
-    "nombre":          "NOMBRE SOCIO",
-    "tipo_operacion":  "TIPO DE OPERACIÓN",
-    "dia_pago":        "DIA DE PAGO",
-    "valor_cuota":     "VALOR CUOTA",
-    "dias_mora":       "DÍAS MORA",
-    "fecha_concesion": "FECHA CONCESIÓN",
-}
+# Claves normalizadas (snake_case) para las columnas requeridas.
+# Si el core cambia el nombre de columna, añadir el nuevo nombre normalizado aquí
+# o registrar la sobreescritura en dbo.parametros (col_cade_*).
+_CLAVES_OPERACION     = ("operacion", "no_operacion", "numero_operacion")
+_CLAVES_IDENTIFICACION= ("identificacion", "cedula", "no_cedula")
+_CLAVES_NOMBRE        = ("nombre_socio", "nombre", "cliente")
+_CLAVES_TIPO          = ("tipo_oper", "tipo_de_operacion", "tipo_operacion", "tipo_oper_")
+_CLAVES_DIA_PAGO      = ("dia_de_pago", "dia_pago", "d_a_de_pago")
+_CLAVES_CUOTA         = ("valor_cuota", "valor_de_cuota", "cuota")
+_CLAVES_MORA          = ("dias_mora", "d_as_mora", "dias_de_mora")
+_CLAVES_CONCESION     = ("fecha_concesion", "fecha_de_concesion", "fec_concesion", "fecha_concesi_n")
+
+
+def _primera(fila: Dict[str, str], claves: tuple, default: str = "") -> str:
+    for k in claves:
+        if k in fila:
+            return fila[k]
+    return default
 
 
 def leer_cadetacaco(
@@ -40,34 +59,50 @@ def leer_cadetacaco(
     fecha_corte: Optional[date] = None,
     col_map: Optional[Dict[str, str]] = None,
 ) -> List[RegistroCadetacaco]:
-    cols = {**_COL_DEFAULTS, **(col_map or {})}
+    """
+    col_map permite sobreescribir los nombres normalizados esperados.
+    Ej: {"operacion": "no_operacion_2"} si el core genera columnas duplicadas.
+    """
     lineas = leer_lineas_archivo(path)
 
-    data_inicio = next(
-        (i for i, l in enumerate(lineas) if "\t" in l and cols["operacion"].lower() in l.lower()),
+    # Buscar la línea de cabecera: primera con tab que tenga columnas útiles
+    header_idx = next(
+        (i for i, l in enumerate(lineas) if "\t" in l and l.strip()),
         None,
     )
-    if data_inicio is None:
-        log.warning("No se encontró cabecera en %s", path)
+    if header_idx is None:
+        log.warning("Sin cabecera TAB en %s", path.name)
         return []
 
-    contenido = "\n".join(lineas[data_inicio:])
-    reader = csv.DictReader(io.StringIO(contenido), delimiter="\t")
+    # Normalizar cabeceras a snake_case (igual que carteramora)
+    cab_originales = lineas[header_idx].split("\t")
+    cab_norm = normalizar_encabezados(cab_originales)
+    log.debug("Cabeceras normalizadas %s: %s", path.name, cab_norm)
 
     resultado: List[RegistroCadetacaco] = []
-    for fila in reader:
-        operacion = parse_str(fila.get(cols["operacion"], ""))
-        if not operacion or not operacion.isdigit():
+    for linea in lineas[header_idx + 1:]:
+        if not linea.strip():
             continue
+        valores = linea.split("\t")
+        if len(valores) < len(cab_norm):
+            valores += [""] * (len(cab_norm) - len(valores))
+        fila = dict(zip(cab_norm, valores))
+
+        # Si se provee col_map, sobreescribe las claves de búsqueda
+        cm = col_map or {}
+        operacion = parse_str(_primera(fila, (cm.get("operacion"),) if cm.get("operacion") else _CLAVES_OPERACION))
+        if not operacion or not operacion.strip().isdigit():
+            continue
+
         resultado.append(RegistroCadetacaco(
             operacion=operacion,
-            identificacion=parse_str(fila.get(cols["identificacion"], "")),
-            nombre=parse_str(fila.get(cols["nombre"], "")),
-            tipo_operacion=parse_str(fila.get(cols["tipo_operacion"], "")),
-            dia_pago=parse_int(fila.get(cols["dia_pago"], "0")),
-            valor_cuota=parse_float(fila.get(cols["valor_cuota"], "0")),
-            dias_mora=parse_int(fila.get(cols["dias_mora"], "0")),
-            fecha_concesion=parse_fecha_cadetacaco(fila.get(cols["fecha_concesion"], "")),
+            identificacion=parse_str(_primera(fila, (cm.get("identificacion"),) if cm.get("identificacion") else _CLAVES_IDENTIFICACION)),
+            nombre=parse_str(_primera(fila, (cm.get("nombre"),) if cm.get("nombre") else _CLAVES_NOMBRE)),
+            tipo_operacion=parse_str(_primera(fila, (cm.get("tipo_operacion"),) if cm.get("tipo_operacion") else _CLAVES_TIPO)),
+            dia_pago=parse_int(_primera(fila, (cm.get("dia_pago"),) if cm.get("dia_pago") else _CLAVES_DIA_PAGO)),
+            valor_cuota=parse_float(_primera(fila, (cm.get("valor_cuota"),) if cm.get("valor_cuota") else _CLAVES_CUOTA)),
+            dias_mora=parse_int(_primera(fila, (cm.get("dias_mora"),) if cm.get("dias_mora") else _CLAVES_MORA)),
+            fecha_concesion=parse_fecha_cadetacaco(_primera(fila, (cm.get("fecha_concesion"),) if cm.get("fecha_concesion") else _CLAVES_CONCESION)),
             fecha_corte=fecha_corte,
         ))
 
