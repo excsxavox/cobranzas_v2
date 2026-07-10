@@ -21,7 +21,7 @@ def escribir_isabel(
     fecha: date,
     numero_gestion: int,
 ) -> Path:
-    nombre = f"PREVENTIVA_CORTE_{fecha.strftime('%d%m%Y')}_G{numero_gestion}.txt"
+    nombre = f"PREVENTIVA_CORTE_{fecha.strftime('%d%m%Y')}.txt"
     ruta = directorio / nombre
     ruta.parent.mkdir(parents=True, exist_ok=True)
 

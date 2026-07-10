@@ -19,6 +19,7 @@ class Asesor(Base):
     numero_telefono: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     email: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
     activo: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True, default=True)
+    perfil: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     creado_en: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=False), nullable=True
     )

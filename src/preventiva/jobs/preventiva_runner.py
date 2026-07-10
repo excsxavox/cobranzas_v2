@@ -23,7 +23,7 @@ def _destinatarios_notificacion(session_factory, estado: str) -> List[str]:
         with session_factory() as session:
             fila = session.execute(
                 text(
-                    "SELECT correo_para FROM dbo.notificaciones "
+                    "SELECT correo_para FROM notificaciones "
                     "WHERE id_proceso = 'general' AND estado = :estado AND activo = 1"
                 ),
                 {"estado": estado},

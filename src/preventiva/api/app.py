@@ -15,10 +15,10 @@ Endpoints:
 """
 
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, UploadFile
 from sqlalchemy import select, text
 
 from preventiva.api.schemas import (
@@ -371,6 +371,209 @@ def create_app(settings: Optional[PreventivaSettings] = None) -> FastAPI:
                 descripcion=param.descripcion,
                 activo=param.activo,
             )
+
+    # ── Historial CAMOROSICO (backfill) ──────────────────────────────────────
+
+    @app.post(
+        "/historico/cargar",
+        tags=["Historial"],
+        summary="Cargar historial CAMOROSICO de los últimos N meses",
+        description=(
+            "Recorre los archivos CAMOROSICO en PREV_ORIGEN_LIS y carga "
+            "los registros en historial_mora_detalle. Útil para la puesta "
+            "en producción inicial o tras una interrupción prolongada."
+        ),
+    )
+    def cargar_historico(
+        meses: int = Query(2, ge=1, le=24, description="Meses hacia atrás desde hoy"),
+        forzar: bool = Query(False, description="Re-carga fechas que ya tienen datos"),
+    ):
+        from datetime import timedelta
+        from pathlib import Path as _Path
+        from preventiva.infrastructure.config.lis_resolver import LisResolver
+        from preventiva.infrastructure.persistence.repositories.historial_mora_repository import (
+            SqlAlchemyHistorialMoraRepository,
+        )
+        from preventiva.infrastructure.persistence.repositories.parametros_repository import (
+            SqlAlchemyParametrosRepository,
+        )
+        from preventiva.infrastructure.adapters.lis_camorosico_reader import leer_camorosico
+
+        hoy = date.today()
+        ayer = hoy - timedelta(days=1)
+
+        # Mismo cálculo que HistorialMoraHandler
+        mes_ini = hoy.month - (meses - 1)
+        anio_ini = hoy.year
+        while mes_ini < 1:
+            mes_ini += 12
+            anio_ini -= 1
+        fecha_ini = date(anio_ini, mes_ini, hoy.day)
+        fecha_fin = ayer
+
+        params_repo = SqlAlchemyParametrosRepository(sf)
+        pat_camo = params_repo.obtener("CAMOROSICO_LIS", "")
+        lis_resolver = LisResolver(
+            base_lis=_Path(cfg.prev_origen_lis),
+            patrones_camorosico=[pat_camo] if pat_camo else None,
+        )
+        mora_repo = SqlAlchemyHistorialMoraRepository(sf)
+
+        cargados = 0
+        omitidos = 0
+        sin_archivo = 0
+        detalle = []
+
+        fecha_actual = fecha_ini
+        while fecha_actual <= fecha_fin:
+            if not forzar and mora_repo.contar_por_fecha(fecha_actual) > 0:
+                omitidos += 1
+                fecha_actual += timedelta(days=1)
+                continue
+
+            archivos = lis_resolver.camorosico(fecha_actual)
+            if not archivos:
+                sin_archivo += 1
+                fecha_actual += timedelta(days=1)
+                continue
+
+            registros = leer_camorosico(archivos[0], fecha_corte=fecha_actual)
+            if registros:
+                proceso_cod = f"BACKFILL_{fecha_actual.strftime('%Y%m%d')}"
+                guardados = mora_repo.guardar_lote(registros, proceso_cod)
+                cargados += guardados
+                detalle.append({
+                    "fecha": fecha_actual.strftime("%d/%m/%Y"),
+                    "archivo": archivos[0].name,
+                    "registros": guardados,
+                })
+            else:
+                sin_archivo += 1
+
+            fecha_actual += timedelta(days=1)
+
+        return {
+            "ventana_desde": fecha_ini.strftime("%d/%m/%Y"),
+            "ventana_hasta": fecha_fin.strftime("%d/%m/%Y"),
+            "registros_cargados": cargados,
+            "dias_omitidos": omitidos,
+            "dias_sin_archivo": sin_archivo,
+            "detalle": detalle,
+        }
+
+    # ── Carga de datos maestros ───────────────────────────────────────────────
+
+    @app.post(
+        "/recblue/cargar",
+        tags=["Datos Maestros"],
+        summary="Cargar archivo CSV de Recblue en credito_rb",
+    )
+    def cargar_recblue(file: UploadFile):
+        import csv
+        import io
+        from datetime import date as _date
+
+        fecha_hoy = str(_date.today())
+        insertados = 0
+        actualizados = 0
+
+        contenido = file.file.read()
+        for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+            try:
+                texto = contenido.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            raise HTTPException(status_code=400, detail="No se pudo decodificar el archivo.")
+
+        reader = csv.DictReader(io.StringIO(texto))
+        reader.fieldnames = [c.strip().strip('"').lower() for c in (reader.fieldnames or [])]
+
+        with sf() as session:
+            for fila in reader:
+                num_op  = (fila.get("numero_operacion") or "").strip()
+                id_cred = (fila.get("id_credito") or "").strip()
+                if not num_op or not id_cred:
+                    continue
+                existe = session.execute(
+                    text("SELECT COUNT(*) FROM credito_rb WHERE numero_operacion=:op"),
+                    {"op": num_op}
+                ).scalar()
+                if existe:
+                    session.execute(
+                        text("UPDATE credito_rb SET id_credito=:id, fecha_carga=:f WHERE numero_operacion=:op"),
+                        {"id": id_cred, "f": fecha_hoy, "op": num_op}
+                    )
+                    actualizados += 1
+                else:
+                    session.execute(
+                        text("INSERT INTO credito_rb (id_credito, numero_operacion, fecha_carga) VALUES (:id, :op, :f)"),
+                        {"id": id_cred, "op": num_op, "f": fecha_hoy}
+                    )
+                    insertados += 1
+            session.commit()
+
+        with sf() as s2:
+            total = s2.execute(text("SELECT COUNT(*) FROM credito_rb")).scalar()
+
+        return {"insertados": insertados, "actualizados": actualizados, "total_en_tabla": total}
+
+    @app.post(
+        "/asesores/cargar",
+        tags=["Datos Maestros"],
+        summary="Cargar archivo CSV de asesores (usuario, perfil_usuario)",
+    )
+    def cargar_asesores(file: UploadFile):
+        import csv
+        import io
+        from datetime import datetime as _dt
+
+        ahora = str(_dt.now())
+        insertados = 0
+        actualizados = 0
+
+        contenido = file.file.read()
+        for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+            try:
+                texto = contenido.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            raise HTTPException(status_code=400, detail="No se pudo decodificar el archivo.")
+
+        reader = csv.DictReader(io.StringIO(texto))
+        reader.fieldnames = [c.strip().strip('"').lower() for c in (reader.fieldnames or [])]
+
+        with sf() as session:
+            for fila in reader:
+                usuario = (fila.get("usuario") or "").strip()
+                perfil  = (fila.get("perfil_usuario") or "").strip()
+                if not usuario:
+                    continue
+                existe = session.execute(
+                    text("SELECT COUNT(*) FROM asesores WHERE nombre=:n"),
+                    {"n": usuario}
+                ).scalar()
+                if not existe:
+                    session.execute(
+                        text("INSERT INTO asesores (nombre, perfil, activo, creado_en) VALUES (:n, :p, 1, :f)"),
+                        {"n": usuario, "p": perfil, "f": ahora}
+                    )
+                    insertados += 1
+                else:
+                    session.execute(
+                        text("UPDATE asesores SET perfil=:p WHERE nombre=:n"),
+                        {"p": perfil, "n": usuario}
+                    )
+                    actualizados += 1
+            session.commit()
+
+        with sf() as s2:
+            total = s2.execute(text("SELECT COUNT(*) FROM asesores")).scalar()
+
+        return {"insertados": insertados, "actualizados": actualizados, "total_en_tabla": total}
 
     return app
 

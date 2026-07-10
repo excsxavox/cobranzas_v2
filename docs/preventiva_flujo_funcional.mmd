@@ -1,0 +1,74 @@
+flowchart TD
+    %% TRIGGERS
+    SCHED(["🕐 Scheduler\nDiario 07:45 AM"])
+    API(["📬 POST /ejecutar-preventiva\nEjecución manual"])
+
+    SCHED --> DEC{¿Hoy corresponde\nejecutar?}
+    DEC -->|No es día de gestión| END1(["Fin"])
+    DEC -->|2 días antes del corte\ny día del corte| P1
+    API --> P1
+
+    %% PIPELINE
+    P1["1️⃣ ParseLisHandler\nBusca CADETACACO y CAMOROSICO\nConvierte .lis a registros Python\nValida integridad de cabeceras"]
+    P2["2️⃣ HistorialMoraHandler\nGuarda CAMOROSICO en BD\nVentana deslizante N meses\nCalcula mora promedio por operación"]
+    P3["3️⃣ SeleccionHandler\nC1: mora promedio ≥ 5 días\nC2: pago tardío recurrente\nC3: crédito nuevo ≤ 6 meses\nC4: alivio financiero vigente"]
+    P4["4️⃣ SaldoHandler\nLee AHSALDIA\nExcluye si saldo cubre cuota\nCalcula faltante si parcial"]
+    P5["5️⃣ RecblueHandler\nLee credito_rb en BD\nResuelve operación → id_credito"]
+    P6["6️⃣ IsabelHandler\nGenera PREVENTIVA_CORTE_DDMMAAAA.txt\nFormato: telefono|nombre|id_credito"]
+    P7["7️⃣ ReporteHandler\nGuarda en BD reporte_preventiva\nG3: genera Excel del corte (3 gestiones)\nG3 último corte: genera Excel mensual"]
+
+    P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7
+
+    %% ERROR PATH
+    P1 -->|Archivos no encontrados| ERR["❌ ERROR\nDetiene proceso"]
+    ERR --> MAIL
+
+    %% INSUMOS
+    CADE["📁 cadetacaco_cieMMDDYYYY.lis\nCartera activa"]
+    CAMO["📁 camorosico_MMDDYYYY.lis\nHistorial mora"]
+    AHS["📁 ahsaldia_*_of00255.lis\nSaldos en cuenta"]
+    RB["🗄️ credito_rb\nBD compartida"]
+    CFG["⚙️ dbo.parametros\nnumero_meses · promedio_gestion\ndias_corte · col_cade_* · …"]
+
+    CADE --> P1
+    CAMO --> P1
+    AHS --> P4
+    RB --> P5
+    CFG -..-> P2
+    CFG -..-> P3
+
+    %% SALIDAS
+    TXT["📄 PREVENTIVA_CORTE_DDMMAAAA.txt\n→ Carga en Isabel\ntelefono | nombre | id_credito\n18 archivos al mes (3 gestiones × 6 cortes)"]
+    RPT["📊 REPORTE_PREVENTIVA_CORTE{DD}_{MMAAAA}.xlsx\n→ Excel por corte con 3 gestiones\n6 archivos al mes (uno por corte, en G3)"]
+    MES["📊 REPORTE_PREVENTIVA_MENSUAL_{MMAAAA}.xlsx\n→ Consolidado mensual todos los cortes\n1 archivo al mes (G3 del último corte)"]
+
+    P6 --> TXT
+    P7 -->|G3 de cada corte| RPT
+    P7 -->|G3 del último corte del mes| MES
+
+    %% BD
+    HIS["🗄️ historial_mora_detalle\nVentana deslizante"]
+    BDR["🗄️ reporte_preventiva\nHistórico de gestiones"]
+    LOG["🗄️ logs_cp\nAuditoría"]
+
+    P2 --> HIS
+    P7 --> BDR
+    P7 --> LOG
+
+    %% NOTIFICACION FINAL
+    P7 --> MAIL["📧 Correo\npgalarza · amontero\nOK o ERROR"]
+
+    %% ESTILOS
+    classDef trigger fill:#1565C0,stroke:#0D47A1,color:#fff
+    classDef step fill:#2E7D32,stroke:#1B5E20,color:#fff
+    classDef insumo fill:#E65100,stroke:#BF360C,color:#fff
+    classDef salida fill:#6A1B9A,stroke:#4A148C,color:#fff
+    classDef db fill:#37474F,stroke:#263238,color:#fff
+    classDef alerta fill:#B71C1C,stroke:#7F0000,color:#fff
+
+    class SCHED,API trigger
+    class P1,P2,P3,P4,P5,P6,P7 step
+    class CADE,CAMO,AHS,RB,CFG insumo
+    class TXT,RPT,MES salida
+    class HIS,BDR,LOG db
+    class ERR,MAIL alerta
