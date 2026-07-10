@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Mapping, Optional, Sequence
+from typing import Mapping, Optional, Sequence, Union
 
 from notificaciones.domain.models.mensaje_correo import MensajeCorreo
 from notificaciones.domain.models.resultado_envio import ResultadoEnvio
@@ -33,7 +33,7 @@ class NotificacionService:
         estado: str,
         asunto: str,
         variables: Optional[Mapping[str, str]] = None,
-        adjuntos: Optional[Sequence[Path | str]] = None,
+        adjuntos: Optional[Sequence[Union[Path, str]]] = None,
     ) -> ResultadoEnvio:
         resultado = ResultadoEnvio()
 
@@ -103,8 +103,8 @@ class NotificacionService:
             plantilla = self._catalogo.obtener(FALLBACK_ID_PROCESO, estado)
         return plantilla
 
-    def _resolver_adjuntos(self, adjuntos: Sequence[Path | str]) -> list[Path]:
-        paths: list[Path] = []
+    def _resolver_adjuntos(self, adjuntos: Sequence[Union[Path, str]]) -> list:
+        paths = []
         for item in adjuntos:
             path = Path(item)
             if path.is_file():

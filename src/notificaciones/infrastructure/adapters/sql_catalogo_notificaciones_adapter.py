@@ -22,7 +22,8 @@ class SqlCatalogoNotificacionesAdapter(CatalogoNotificacionesPort):
 
     def obtener(self, id_proceso: str, estado: str) -> Optional[PlantillaNotificacion]:
         with self._session_factory() as session:
-            tabla = _nombre_tabla(session.bind)
+            engine = session.get_bind()
+            tabla = _nombre_tabla(engine)
             row = session.execute(
                 text(
                     f"""
