@@ -415,7 +415,7 @@ def create_app(settings: Optional[PreventivaSettings] = None) -> FastAPI:
         params_repo = SqlAlchemyParametrosRepository(sf)
         pat_camo = params_repo.obtener("CAMOROSICO_LIS", "")
         lis_resolver = LisResolver(
-            base_lis=_Path(cfg.prev_origen_lis),
+            base_lis=_Path(cfg.directorio_docsmora),
             patrones_camorosico=[pat_camo] if pat_camo else None,
         )
         mora_repo = SqlAlchemyHistorialMoraRepository(sf)

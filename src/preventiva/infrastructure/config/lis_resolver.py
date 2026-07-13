@@ -111,9 +111,9 @@ class LisResolver:
 
 class AhsaldiaResolver:
     """
-    Resuelve el archivo AHSALDIA (servidor distinto, HU líneas 110-120).
-    Estructura: {base}/{año}/<subcarpeta>/<ahsaldia...>.lis
-    Patrón parametrizable con `{fecha}` opcional.
+    Resuelve el archivo AHSALDIA.
+    Estructura: {base}/{YYYY}/{MMDDYYYY}/ahorros{MMDDYYYY}b/<ahsaldia>.lis
+    Patrón parametrizable con `{fecha}` como marcador del MMDDYYYY.
     """
 
     def __init__(
@@ -124,14 +124,28 @@ class AhsaldiaResolver:
         self._base = Path(base_ahsaldia)
         self._patron = patron
 
+    def _carpeta_lote(self, fecha: date) -> Path:
+        ftxt = fecha_corte_mmddyyyy(fecha)
+        anio = ftxt[4:8]
+        return self._base / anio / ftxt / f"ahorros{ftxt}b"
+
     def resolver(self, fecha: date) -> List[Path]:
         ftxt = fecha_corte_mmddyyyy(fecha)
-        anio = str(fecha.year)
         patron_fmt = self._patron.format(fecha=ftxt) if "{fecha}" in self._patron else self._patron
-        carpeta_anio = self._base / anio
-        # Busca en el año vigente y subcarpetas (estructura diaria variable)
-        base_busqueda = carpeta_anio if carpeta_anio.is_dir() else self._base
+
+        # Busca primero en la subcarpeta estructurada (producción)
+        carpeta = self._carpeta_lote(fecha)
+        if carpeta.is_dir():
+            resultado = [
+                p for p in carpeta.glob(patron_fmt)
+                if p.is_file() and not p.name.startswith("~$")
+            ]
+            if resultado:
+                resultado.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+                return resultado
+
+        # Fallback: busca recursivamente desde la raíz (pruebas locales)
         return [
-            p for p in base_busqueda.glob(f"**/{patron_fmt}")
+            p for p in self._base.glob(f"**/{patron_fmt}")
             if p.is_file() and not p.name.startswith("~$")
         ]

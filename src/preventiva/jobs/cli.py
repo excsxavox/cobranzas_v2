@@ -170,7 +170,7 @@ def cargar_historico(
     pat_camo    = params_repo.obtener("CAMOROSICO_LIS", "")
 
     lis_resolver = LisResolver(
-        base_lis=Path(cfg.prev_origen_lis),
+        base_lis=Path(cfg.directorio_docsmora),
         patrones_camorosico=[pat_camo] if pat_camo else None,
     )
     mora_repo = SqlAlchemyHistorialMoraRepository(sf)

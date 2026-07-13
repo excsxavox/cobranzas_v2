@@ -26,12 +26,14 @@ class PreventivaSettings(BaseSettings):
     prev_api_port: int = Field(default=8001, alias="PREV_API_PORT")
 
     # ── Rutas de archivos .lis ─────────────────────────────────────────────
-    prev_origen_lis: str = Field(
-        default=r"\\192.168.101.155\listado_cayambe",
-        alias="PREV_ORIGEN_LIS",
+    # DOCSMORA_DIR: carpeta raíz compartida con carteramora.
+    # Estructura esperada: {DOCSMORA_DIR}/{YYYY}/{MMDDYYYY}/cartera{MMDDYYYY}b/
+    directorio_docsmora: str = Field(
+        default=r"\\192.168.101.155\listados_cayambe",
+        alias="DOCSMORA_DIR",
     )
     prev_origen_ahsaldia: str = Field(
-        default=r"\\192.168.101.148\Listados_Cayambe",
+        default=r"\\192.168.101.155\listados_cayambe",
         alias="PREV_ORIGEN_AHSALDIA",
     )
     prev_directorio_resultados: str = Field(

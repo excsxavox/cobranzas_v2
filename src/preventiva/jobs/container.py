@@ -123,7 +123,7 @@ def build_cadena(settings: Optional[PreventivaSettings] = None):
     }
 
     lis_resolver = LisResolver(
-        base_lis=Path(cfg.prev_origen_lis),
+        base_lis=Path(cfg.directorio_docsmora),
         patrones_cadetacaco=[pat_cade] if pat_cade else None,
         patrones_camorosico=[pat_camo] if pat_camo else None,
     )
