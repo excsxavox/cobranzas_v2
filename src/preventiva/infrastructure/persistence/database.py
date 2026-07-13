@@ -24,11 +24,20 @@ def create_engine_preventiva(database_url: str, echo: bool = False) -> Engine:
 
 
 def init_database(engine: Engine) -> None:
-    """Crea tablas del Esquema B y siembra datos base (idempotente)."""
-    import preventiva.infrastructure.persistence.models  # noqa: F401  registra los modelos
+    """Crea tablas del Esquema A (cobranzas) y Esquema B (preventiva), y siembra datos base."""
+    # Esquema A — cobranzas (claves, catalogo, reglas, asesores, deudas, etc.)
+    import cobranzas.infrastructure.persistence.models  # noqa: F401
+    from cobranzas.infrastructure.persistence.base import Base as CobranzasBase
+    CobranzasBase.metadata.create_all(bind=engine, checkfirst=True)
+    log.info("Tablas cobranzas verificadas / creadas.")
 
+    # Esquema B — preventiva
+    import preventiva.infrastructure.persistence.models  # noqa: F401
     Base.metadata.create_all(bind=engine, checkfirst=True)
     log.info("Tablas preventiva verificadas / creadas.")
+
+    # También crea credito_rb si no existe (tabla compartida sin modelo ORM)
+    _crear_tabla_credito_rb(engine)
 
     with engine.begin() as conn:
         _seed_parametros(conn)
@@ -37,6 +46,26 @@ def init_database(engine: Engine) -> None:
         _seed_claves_catalogo(conn)
 
     log.info("Semillas de base de datos aplicadas.")
+
+
+def _crear_tabla_credito_rb(engine: Engine) -> None:
+    """Crea credito_rb si no existe (tabla compartida sin modelo ORM)."""
+    from sqlalchemy import BigInteger, Column, DateTime, MetaData, String, Table
+    from sqlalchemy.sql import func as sqlfunc
+
+    meta = MetaData()
+    Table(
+        "credito_rb", meta,
+        Column("id",               BigInteger,  primary_key=True, autoincrement=True),
+        Column("id_credito",       String(30),  nullable=False),
+        Column("identificacion",   String(20),  nullable=True),
+        Column("socio",            String(30),  nullable=True),
+        Column("numero_operacion", String(30),  nullable=False),
+        Column("fecha_carga",      DateTime,    nullable=False, server_default=sqlfunc.now()),
+        Column("proceso_cod",      String(14),  nullable=True),
+    )
+    meta.create_all(bind=engine, checkfirst=True)
+    log.info("Tabla credito_rb verificada / creada.")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
