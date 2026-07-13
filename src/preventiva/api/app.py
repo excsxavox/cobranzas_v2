@@ -389,9 +389,10 @@ def create_app(settings: Optional[PreventivaSettings] = None) -> FastAPI:
         meses: int = Query(2, ge=1, le=24, description="Meses hacia atrás desde hoy"),
         forzar: bool = Query(False, description="Re-carga fechas que ya tienen datos"),
     ):
+        import re
         from datetime import timedelta
         from pathlib import Path as _Path
-        from preventiva.infrastructure.config.lis_resolver import LisResolver
+        from sqlalchemy import select as _select, func as _func
         from preventiva.infrastructure.persistence.repositories.historial_mora_repository import (
             SqlAlchemyHistorialMoraRepository,
         )
@@ -399,11 +400,11 @@ def create_app(settings: Optional[PreventivaSettings] = None) -> FastAPI:
             SqlAlchemyParametrosRepository,
         )
         from preventiva.infrastructure.adapters.lis_camorosico_reader import leer_camorosico
+        from preventiva.infrastructure.persistence.models.historial_mora_detalle import HistorialMoraDetalle
 
         hoy = date.today()
         ayer = hoy - timedelta(days=1)
 
-        # Mismo cálculo que HistorialMoraHandler
         mes_ini = hoy.month - (meses - 1)
         anio_ini = hoy.year
         while mes_ini < 1:
@@ -413,49 +414,85 @@ def create_app(settings: Optional[PreventivaSettings] = None) -> FastAPI:
         fecha_fin = ayer
 
         params_repo = SqlAlchemyParametrosRepository(sf)
-        pat_camo = params_repo.obtener("CAMOROSICO_LIS", "")
-        lis_resolver = LisResolver(
-            base_lis=_Path(cfg.directorio_docsmora),
-            patrones_camorosico=[pat_camo] if pat_camo else None,
-        )
+        pat_camo = params_repo.obtener("CAMOROSICO_LIS", "camorosico*_of_0.lis")
+        base_lis = _Path(cfg.directorio_docsmora)
+
         mora_repo = SqlAlchemyHistorialMoraRepository(sf)
 
+        # ── PASO 1: un solo glob recursivo para encontrar TODOS los archivos ──
+        # Mucho más rápido que buscar archivo por archivo 180 veces.
+        patron_glob = pat_camo.replace("{fecha}", "*") if "{fecha}" in pat_camo else pat_camo
+        todos_archivos = [
+            p for p in base_lis.glob(f"**/{patron_glob}")
+            if p.is_file() and not p.name.startswith("~$")
+        ]
+
+        # Extrae la fecha MMDDYYYY del nombre del archivo (ej: camorosico_05042026_2327_of_0.lis)
+        _re_fecha = re.compile(r"(\d{8})")
+        archivo_por_fecha: dict = {}
+        for p in todos_archivos:
+            m = _re_fecha.search(p.name)
+            if not m:
+                continue
+            raw = m.group(1)  # MMDDYYYY
+            try:
+                f = date(int(raw[4:8]), int(raw[0:2]), int(raw[2:4]))
+            except ValueError:
+                continue
+            if fecha_ini <= f <= fecha_fin:
+                # Si hay varios archivos para la misma fecha, queda el más reciente
+                if f not in archivo_por_fecha or p.stat().st_mtime > archivo_por_fecha[f].stat().st_mtime:
+                    archivo_por_fecha[f] = p
+
+        fechas_con_archivo = sorted(archivo_por_fecha.keys())
+
+        # ── PASO 2: una sola query para saber qué fechas ya tienen datos ──────
+        fechas_ya_cargadas: set = set()
+        if not forzar and fechas_con_archivo:
+            with sf() as session:
+                filas = session.execute(
+                    _select(
+                        HistorialMoraDetalle.fecha_corte,
+                        _func.count().label("total")
+                    )
+                    .where(
+                        HistorialMoraDetalle.fecha_corte.in_(fechas_con_archivo),
+                    )
+                    .group_by(HistorialMoraDetalle.fecha_corte)
+                    .having(_func.count() > 0)
+                ).all()
+            fechas_ya_cargadas = {fila.fecha_corte for fila in filas}
+
+        # ── PASO 3: procesar solo las fechas necesarias ───────────────────────
         cargados = 0
         omitidos = 0
-        sin_archivo = 0
+        sin_archivo = len(set(range((fecha_fin - fecha_ini).days + 1)) - set())
         detalle = []
 
-        fecha_actual = fecha_ini
-        while fecha_actual <= fecha_fin:
-            if not forzar and mora_repo.contar_por_fecha(fecha_actual) > 0:
-                omitidos += 1
-                fecha_actual += timedelta(days=1)
-                continue
+        fechas_a_procesar = [
+            f for f in fechas_con_archivo
+            if f not in fechas_ya_cargadas
+        ]
+        omitidos = len(fechas_ya_cargadas)
+        sin_archivo = (fecha_fin - fecha_ini).days + 1 - len(fechas_con_archivo)
 
-            archivos = lis_resolver.camorosico(fecha_actual)
-            if not archivos:
-                sin_archivo += 1
-                fecha_actual += timedelta(days=1)
-                continue
-
-            registros = leer_camorosico(archivos[0], fecha_corte=fecha_actual)
+        for fecha_actual in fechas_a_procesar:
+            archivo = archivo_por_fecha[fecha_actual]
+            registros = leer_camorosico(archivo, fecha_corte=fecha_actual)
             if registros:
                 proceso_cod = f"BACKFILL_{fecha_actual.strftime('%Y%m%d')}"
                 guardados = mora_repo.guardar_lote(registros, proceso_cod)
                 cargados += guardados
                 detalle.append({
                     "fecha": fecha_actual.strftime("%d/%m/%Y"),
-                    "archivo": archivos[0].name,
+                    "archivo": archivo.name,
                     "registros": guardados,
                 })
-            else:
-                sin_archivo += 1
-
-            fecha_actual += timedelta(days=1)
 
         return {
             "ventana_desde": fecha_ini.strftime("%d/%m/%Y"),
             "ventana_hasta": fecha_fin.strftime("%d/%m/%Y"),
+            "archivos_encontrados": len(fechas_con_archivo),
             "registros_cargados": cargados,
             "dias_omitidos": omitidos,
             "dias_sin_archivo": sin_archivo,
