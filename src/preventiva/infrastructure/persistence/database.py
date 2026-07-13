@@ -257,7 +257,7 @@ def _seed_claves_catalogo(conn) -> None:
                 text(
                     "INSERT INTO claves (clave, descripcion, fecha_creacion, vigente, fecha_modificacion) "
                     "VALUES ('prev_dias_corte', 'Días de corte para gestión preventiva (GRC-03)', "
-                    "GETDATE(), 1, GETDATE())"
+                    "CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP)"
                 )
             )
 
@@ -275,7 +275,7 @@ def _seed_claves_catalogo(conn) -> None:
                     text(
                         "INSERT INTO catalogo "
                         "(id_clave, valor, descripcion, fecha_creacion, vigencia, fecha_modificacion) "
-                        "VALUES (:k, :v, 'Día de corte preventiva', GETDATE(), 1, GETDATE())"
+                        "VALUES (:k, :v, 'Día de corte preventiva', CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP)"
                     ),
                     {"k": id_corte, "v": dia},
                 )
@@ -289,7 +289,7 @@ def _seed_claves_catalogo(conn) -> None:
                 text(
                     "INSERT INTO claves (clave, descripcion, fecha_creacion, vigente, fecha_modificacion) "
                     "VALUES ('prev_alivio', 'Tipos de operación con alivio financiero (GRC-03)', "
-                    "GETDATE(), 1, GETDATE())"
+                    "CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP)"
                 )
             )
 
@@ -317,7 +317,7 @@ def _seed_claves_catalogo(conn) -> None:
                     text(
                         "INSERT INTO catalogo "
                         "(id_clave, valor, descripcion, fecha_creacion, vigencia, fecha_modificacion) "
-                        "VALUES (:k, :v, :d, GETDATE(), 1, GETDATE())"
+                        "VALUES (:k, :v, :d, CURRENT_TIMESTAMP, 1, CURRENT_TIMESTAMP)"
                     ),
                     {"k": id_alivio, "v": valor, "d": desc},
                 )
