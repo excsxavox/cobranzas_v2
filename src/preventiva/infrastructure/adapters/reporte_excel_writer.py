@@ -1,21 +1,16 @@
 """
 Genera reportes Excel de gestión preventiva (HU GRC-03 líneas 275-308).
 
-Funciones:
-  escribir_reporte          — reporte por ejecución (una gestión).
-  escribir_reporte_mensual  — reporte mensual consolidado con TODOS los
-                              cortes y gestiones del mes (HU líneas 275-284).
+`escribir_reporte_mensual` genera el reporte consolidado por corte o mensual
+con TODOS los cortes y gestiones del período (HU líneas 275-284).
 """
 
 import logging
-from datetime import date
 from pathlib import Path
 from typing import List, TYPE_CHECKING
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill
-
-from preventiva.domain.models.registro_lis import RegistroSeleccion
 
 if TYPE_CHECKING:
     from preventiva.infrastructure.persistence.models.reporte_preventiva import ReportePreventiva
@@ -37,40 +32,6 @@ def _escribir_cabeceras(ws):
         cell = ws.cell(row=1, column=col, value=cab)
         cell.fill = _HEADER_FILL
         cell.font = _HEADER_FONT
-
-
-def escribir_reporte(
-    registros: List[RegistroSeleccion],
-    directorio: Path,
-    fecha: date,
-    numero_gestion: int,
-) -> Path:
-    """Reporte por ejecución — una gestión del día."""
-    nombre = f"REPORTE_PREVENTIVA_{fecha.strftime('%d%m%Y')}_G{numero_gestion}.xlsx"
-    ruta = directorio / nombre
-    ruta.parent.mkdir(parents=True, exist_ok=True)
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = f"Gestión {numero_gestion}"
-    _escribir_cabeceras(ws)
-
-    for fila, r in enumerate(registros, 2):
-        ws.cell(row=fila, column=1,  value=fecha.strftime("%d/%m/%Y"))
-        ws.cell(row=fila, column=2,  value=r.nombre)
-        ws.cell(row=fila, column=3,  value=r.identificacion)
-        ws.cell(row=fila, column=4,  value=r.operacion)
-        ws.cell(row=fila, column=5,  value=r.dias_mora_actual)
-        ws.cell(row=fila, column=6,  value=r.dia_pago)
-        ws.cell(row=fila, column=7,  value=r.telefono)
-        ws.cell(row=fila, column=8,  value=r.valor_faltante)
-        ws.cell(row=fila, column=9,  value=r.saldo_cuenta)
-        ws.cell(row=fila, column=10, value=r.cobertura)
-        ws.cell(row=fila, column=11, value=numero_gestion)
-
-    wb.save(ruta)
-    log.info("Reporte Excel: %s (%d filas)", ruta.name, len(registros))
-    return ruta
 
 
 def escribir_reporte_mensual(

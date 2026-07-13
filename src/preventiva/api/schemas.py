@@ -1,7 +1,7 @@
 """Schemas Pydantic para la API REST de gestión preventiva."""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 from pydantic import BaseModel, Field
 
 

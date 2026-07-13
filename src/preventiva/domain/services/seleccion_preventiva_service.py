@@ -23,10 +23,8 @@ class SeleccionPreventivaService:
     def __init__(
         self,
         umbral_mora_dias: int = 5,
-        numero_meses: int = 6,
         antiguedad_max_meses: int = 6,
-        dias_retraso_recurrente: int = 5,
-        meses_consistencia: int = 5,       # C2: mínimo de meses con mora para ser "recurrente"
+        meses_consistencia: int = 5,
         tipos_alivio: Optional[Set[str]] = None,
         # Activación/desactivación de cada filtro (parametrizable)
         criterio_mora_activo: bool = True,
@@ -35,9 +33,7 @@ class SeleccionPreventivaService:
         criterio_alivio_activo: bool = True,
     ) -> None:
         self._umbral_mora = umbral_mora_dias
-        self._numero_meses = numero_meses
         self._antiguedad_max = antiguedad_max_meses
-        self._dias_retraso = dias_retraso_recurrente
         self._meses_consistencia = meses_consistencia
         self._tipos_alivio: Set[str] = {t.upper() for t in (tipos_alivio or set())}
         self._c1_activo = criterio_mora_activo

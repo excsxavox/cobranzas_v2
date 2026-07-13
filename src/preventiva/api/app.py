@@ -16,10 +16,11 @@ Endpoints:
 
 import logging
 from datetime import date, datetime
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, Query, UploadFile
-from sqlalchemy import select, text
+from sqlalchemy import text
 
 from preventiva.api.schemas import (
     DiaCorteResponse,
@@ -315,8 +316,8 @@ def create_app(settings: Optional[PreventivaSettings] = None) -> FastAPI:
                 filas = session.execute(
                     text(
                         "SELECT c.valor, c.vigencia "
-                        "FROM dbo.catalogo c "
-                        "JOIN dbo.claves k ON k.id_clave = c.id_clave "
+                        "FROM catalogo c "
+                        "JOIN claves k ON k.id_clave = c.id_clave "
                         "WHERE k.clave = 'prev_dias_corte' "
                         "ORDER BY CAST(c.valor AS INT)"
                     )

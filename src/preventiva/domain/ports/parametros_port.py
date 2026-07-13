@@ -1,7 +1,6 @@
-"""Puerto de lectura de parámetros del sistema (tabla dbo.parametros)."""
+"""Puerto de lectura de parámetros del sistema (tabla parametros)."""
 
 from abc import ABC, abstractmethod
-from typing import Optional
 
 
 class ParametrosPort(ABC):

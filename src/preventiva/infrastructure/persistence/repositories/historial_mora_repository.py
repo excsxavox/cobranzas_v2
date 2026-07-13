@@ -11,14 +11,6 @@ from preventiva.domain.ports.historial_mora_port import HistorialMoraPort
 from preventiva.domain.models.registro_lis import RegistroCamorosico
 from preventiva.infrastructure.persistence.models.historial_mora_detalle import HistorialMoraDetalle
 
-# SQLite acepta máximo 999 variables por consulta; usamos 900 para margen seguro.
-_CHUNK = 900
-
-
-def _chunks(lst: List, n: int):
-    for i in range(0, len(lst), n):
-        yield lst[i: i + n]
-
 
 class SqlAlchemyHistorialMoraRepository(HistorialMoraPort):
 
@@ -29,8 +21,8 @@ class SqlAlchemyHistorialMoraRepository(HistorialMoraPort):
         if not registros:
             return 0
         with self._sf() as session:
-            for r in registros:
-                session.add(HistorialMoraDetalle(
+            session.bulk_insert_mappings(HistorialMoraDetalle, [
+                dict(
                     proceso_cod=proceso_cod,
                     operacion=r.operacion,
                     identificacion=r.identificacion,
@@ -38,7 +30,9 @@ class SqlAlchemyHistorialMoraRepository(HistorialMoraPort):
                     fecha_corte=r.fecha_corte,
                     dias_mora=r.dias_mora,
                     fuente_archivo=r.fuente_archivo,
-                ))
+                )
+                for r in registros
+            ])
             session.commit()
         return len(registros)
 
@@ -51,44 +45,24 @@ class SqlAlchemyHistorialMoraRepository(HistorialMoraPort):
         if not operaciones:
             return {}
 
-        # Acumuladores para calcular el promedio ponderado en Python
-        suma: Dict[str, float] = {}
-        conteo: Dict[str, int] = {}
-
         with self._sf() as session:
-            for chunk in _chunks(operaciones, _CHUNK):
-                filas = session.execute(
-                    select(
-                        HistorialMoraDetalle.operacion,
-                        func.avg(HistorialMoraDetalle.dias_mora).label("promedio"),
-                        func.count(HistorialMoraDetalle.id).label("cnt"),
-                    )
-                    .where(
-                        HistorialMoraDetalle.operacion.in_(chunk),
-                        HistorialMoraDetalle.fecha_corte >= fecha_desde,
-                        HistorialMoraDetalle.fecha_corte <= fecha_hasta,
-                    )
-                    .group_by(HistorialMoraDetalle.operacion)
-                ).all()
-
-                for fila in filas:
-                    cnt = int(fila.cnt or 1)
-                    suma[fila.operacion] = suma.get(fila.operacion, 0.0) + (fila.promedio or 0) * cnt
-                    conteo[fila.operacion] = conteo.get(fila.operacion, 0) + cnt
+            filas = session.execute(
+                select(
+                    HistorialMoraDetalle.operacion,
+                    func.avg(HistorialMoraDetalle.dias_mora).label("promedio"),
+                )
+                .where(
+                    HistorialMoraDetalle.operacion.in_(operaciones),
+                    HistorialMoraDetalle.fecha_corte >= fecha_desde,
+                    HistorialMoraDetalle.fecha_corte <= fecha_hasta,
+                )
+                .group_by(HistorialMoraDetalle.operacion)
+            ).all()
 
         return {
-            op: math.floor(suma[op] / conteo[op]) if conteo[op] else 0
-            for op in suma
+            fila.operacion: math.floor(fila.promedio or 0)
+            for fila in filas
         }
-
-    def purgar_anteriores_a(self, fecha_limite: date) -> int:
-        with self._sf() as session:
-            resultado = session.execute(
-                delete(HistorialMoraDetalle)
-                .where(HistorialMoraDetalle.fecha_corte < fecha_limite)
-            )
-            session.commit()
-            return int(resultado.rowcount or 0)
 
     def obtener_meses_con_mora_por_operacion(
         self,
@@ -100,47 +74,49 @@ class SqlAlchemyHistorialMoraRepository(HistorialMoraPort):
         """
         Para C2: cuenta cuántos meses distintos aparece cada operación
         con dias_mora >= dias_mora_minimo dentro de la ventana.
-        Procesa en Python para evitar incompatibilidades entre SQLite y SQL Server.
+        Usa YEAR() y MONTH() de SQL Server.
         """
         if not operaciones:
             return {}
 
-        # {operacion: set(año-mes)}
-        meses_por_op: Dict[str, set] = {}
-
         with self._sf() as session:
-            for chunk in _chunks(operaciones, _CHUNK):
-                filas = session.execute(
-                    select(
-                        HistorialMoraDetalle.operacion,
-                        HistorialMoraDetalle.fecha_corte,
-                    )
-                    .where(
-                        HistorialMoraDetalle.operacion.in_(chunk),
-                        HistorialMoraDetalle.fecha_corte >= fecha_desde,
-                        HistorialMoraDetalle.fecha_corte <= fecha_hasta,
-                        HistorialMoraDetalle.dias_mora >= dias_mora_minimo,
-                    )
-                ).all()
+            filas = session.execute(
+                select(
+                    HistorialMoraDetalle.operacion,
+                    func.count(
+                        func.distinct(
+                            func.year(HistorialMoraDetalle.fecha_corte) * 100
+                            + func.month(HistorialMoraDetalle.fecha_corte)
+                        )
+                    ).label("meses"),
+                )
+                .where(
+                    HistorialMoraDetalle.operacion.in_(operaciones),
+                    HistorialMoraDetalle.fecha_corte >= fecha_desde,
+                    HistorialMoraDetalle.fecha_corte <= fecha_hasta,
+                    HistorialMoraDetalle.dias_mora >= dias_mora_minimo,
+                )
+                .group_by(HistorialMoraDetalle.operacion)
+            ).all()
 
-                for fila in filas:
-                    fc: date = fila.fecha_corte
-                    # fecha_corte puede llegar como string desde SQLite
-                    if isinstance(fc, str):
-                        from datetime import datetime as _dt
-                        fc = _dt.strptime(fc[:10], "%Y-%m-%d").date()
-                    clave = f"{fc.year}-{fc.month:02d}"
-                    meses_por_op.setdefault(fila.operacion, set()).add(clave)
+        return {fila.operacion: int(fila.meses) for fila in filas}
 
-        return {op: len(meses) for op, meses in meses_por_op.items()}
-
-    def contar_por_fecha(self, fecha_corte: date) -> int:
+    def contar_por_fecha(self, fecha: date) -> int:
         """Cuántos registros existen para la fecha dada (para evitar duplicados en backfill)."""
         with self._sf() as session:
             return int(
                 session.execute(
                     select(func.count()).where(
-                        HistorialMoraDetalle.fecha_corte == fecha_corte
+                        HistorialMoraDetalle.fecha_corte == fecha
                     )
                 ).scalar() or 0
             )
+
+    def purgar_anteriores_a(self, fecha_limite: date) -> int:
+        with self._sf() as session:
+            resultado = session.execute(
+                delete(HistorialMoraDetalle)
+                .where(HistorialMoraDetalle.fecha_corte < fecha_limite)
+            )
+            session.commit()
+            return int(resultado.rowcount or 0)

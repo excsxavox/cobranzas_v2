@@ -1,15 +1,8 @@
-"""Inicialización de base de datos para preventiva-svc.
-
-Reutiliza get_engine y get_session_factory de carteramora
-(mismo motor SQLAlchemy, misma BD_Cobranza).
-"""
+"""Inicialización de base de datos para preventiva-svc."""
 
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import sessionmaker
 
-# Reutilización directa del motor de carteramora
-from cobranzas.infrastructure.persistence.session import get_engine, get_session_factory
-
+from cobranzas.infrastructure.persistence.session import get_engine
 from preventiva.infrastructure.persistence.base import Base
 
 

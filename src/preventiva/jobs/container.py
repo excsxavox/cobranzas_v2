@@ -3,17 +3,13 @@ Composition root de preventiva-svc.
 Ensambla todas las dependencias a partir de PreventivaSettings.
 """
 
-from datetime import date
+import logging
 from pathlib import Path
 from typing import Optional, Set
 
-# Reutilización desde carteramora ─────────────────────────────────────────────
-from cobranzas.infrastructure.persistence.repositories.feriados_calendario_repository import (
-    SqlAlchemyFeriadosCalendarioRepository,
-)
 from cobranzas.infrastructure.persistence.session import get_session_factory
-from cobranzas.infrastructure.adapters.smtp_correo_adapter import SmtpCorreoAdapter
-# ─────────────────────────────────────────────────────────────────────────────
+
+log = logging.getLogger("preventiva.container")
 
 from preventiva.infrastructure.config.settings import PreventivaSettings
 from preventiva.infrastructure.config.lis_resolver import AhsaldiaResolver, LisResolver
@@ -41,14 +37,6 @@ from preventiva.application.chain.saldo_handler import SaldoHandler
 from preventiva.application.chain.recblue_handler import RecblueHandler
 from preventiva.application.chain.isabel_handler import IsabelHandler
 from preventiva.application.chain.reporte_handler import ReporteHandler
-from preventiva.application.chain.preventiva_context import PreventivaContext
-
-
-def _cargar_feriados(session_factory, clave: str) -> Set[date]:
-    repo = SqlAlchemyFeriadosCalendarioRepository(session_factory, clave)
-    return repo.fechas_vigentes()
-
-
 def build_cadena(settings: Optional[PreventivaSettings] = None):
     """Construye y retorna (cadena, historial_repo, calendario_svc, session_factory)."""
     cfg = settings or PreventivaSettings()
@@ -80,25 +68,23 @@ def build_cadena(settings: Optional[PreventivaSettings] = None):
     c4_activo = params_repo.obtener_bool("filtro_alivio_activo",      True)
     excluir_saldo_total = params_repo.obtener_bool("excluir_cobertura_total", True)
 
-    # Tipos de alivio desde dbo.catalogo (clave prev_alivio)
+    # Tipos de alivio desde catalogo (clave prev_alivio)
     tipos_alivio: Set[str] = set()
     try:
-        from sqlalchemy import select, text
+        from sqlalchemy import text
         with sf() as session:
             filas = session.execute(
-                text("SELECT c.valor FROM dbo.catalogo c "
-                     "JOIN dbo.claves k ON k.id_clave = c.id_clave "
+                text("SELECT c.valor FROM catalogo c "
+                     "JOIN claves k ON k.id_clave = c.id_clave "
                      "WHERE k.clave = 'prev_alivio' AND c.vigencia = 1")
             ).fetchall()
             tipos_alivio = {f[0].upper() for f in filas}
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("No se pudieron leer tipos_alivio: %s", exc)
 
     seleccion_svc   = SeleccionPreventivaService(
         umbral_mora_dias=umbral_mora,
-        numero_meses=numero_meses,
         antiguedad_max_meses=antiguedad,
-        dias_retraso_recurrente=dias_retraso,
         meses_consistencia=meses_consistencia,
         tipos_alivio=tipos_alivio,
         criterio_mora_activo=c1_activo,
@@ -152,8 +138,8 @@ def build_cadena(settings: Optional[PreventivaSettings] = None):
         from sqlalchemy import text
         with sf() as session:
             filas_c = session.execute(
-                text("SELECT c.valor FROM dbo.catalogo c "
-                     "JOIN dbo.claves k ON k.id_clave = c.id_clave "
+                text("SELECT c.valor FROM catalogo c "
+                     "JOIN claves k ON k.id_clave = c.id_clave "
                      "WHERE k.clave = 'prev_dias_corte' AND c.vigencia = 1")
             ).fetchall()
             for f in filas_c:

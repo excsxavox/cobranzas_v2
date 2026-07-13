@@ -127,8 +127,8 @@ def _cargar_dias_corte(sf) -> Set[int]:
         with sf() as session:
             filas = session.execute(
                 text(
-                    "SELECT c.valor FROM dbo.catalogo c "
-                    "JOIN dbo.claves k ON k.id_clave = c.id_clave "
+                    "SELECT c.valor FROM catalogo c "
+                    "JOIN claves k ON k.id_clave = c.id_clave "
                     "WHERE k.clave = 'prev_dias_corte' AND c.vigencia = 1"
                 )
             ).fetchall()
@@ -225,9 +225,7 @@ def iniciar_scheduler(cfg: Optional[PreventivaSettings] = None) -> None:
 
     scheduler = BlockingScheduler(timezone=cfg.prev_scheduler_tz)
 
-    # Corre TODOS los días — la lógica interna filtra si corresponde ejecutar
     trigger = CronTrigger(
-        day_of_week="mon,tue,wed,thu,fri,sat,sun",
         hour=cfg.prev_scheduler_hora,
         minute=cfg.prev_scheduler_minuto,
         timezone=cfg.prev_scheduler_tz,

@@ -42,6 +42,11 @@ class HistorialMoraPort(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def contar_por_fecha(self, fecha: date) -> int:
+        """Cuenta registros con fecha_corte == fecha (para evitar duplicados en backfill)."""
+        raise NotImplementedError
+
+    @abstractmethod
     def purgar_anteriores_a(self, fecha_limite: date) -> int:
         """
         Elimina los registros con fecha_corte anterior a `fecha_limite`

@@ -16,7 +16,6 @@ from typing import Set, Tuple
 # Reutilización directa desde carteramora
 from cobranzas.domain.services.dias_habiles_service import (
     es_dia_habil,
-    siguiente_dia_habil,
     vencimiento_efectivo,
 )
 

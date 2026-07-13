@@ -41,7 +41,7 @@ class ReporteHandler(PreventivaHandler):
         self,
         reporte_repo: ReportePort,
         directorio_salida: Path,
-        cortes_activos: Set[int] = None,
+        cortes_activos: Optional[Set[int]] = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
