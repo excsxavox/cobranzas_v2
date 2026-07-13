@@ -1,11 +1,11 @@
-"""Utilidad central para alertar errores del pipeline por correo."""
+"""Utilidad central para alertar errores del pipeline vía API de notificaciones."""
 
 import traceback
 from typing import Optional, Sequence
 
-from cobranzas.domain.models.notificacion_resultado import NotificacionResultado
 from cobranzas.infrastructure.config.settings import Settings
-from cobranzas.jobs.notificaciones_container import build_notificacion_errores_service
+from notificaciones import build_notificaciones_api_client
+from notificaciones.domain.models.resultado_envio import ResultadoEnvio
 
 
 def notificar_error_pipeline(
@@ -15,16 +15,12 @@ def notificar_error_pipeline(
     *,
     fecha_corte: str = "",
     exc: Optional[BaseException] = None,
-) -> NotificacionResultado:
+) -> ResultadoEnvio:
     """
-    Lee destinatarios del Excel y envía correo si las notificaciones están habilitadas.
-  """
-    servicio = build_notificacion_errores_service(settings)
-    if servicio is None:
-        motivo = "notificaciones deshabilitadas"
-        if settings.notificaciones_errores_habilitado:
-            motivo = "SMTP no configurado o notificaciones deshabilitadas"
-        return NotificacionResultado(omitido_motivo=motivo)
+    Envía alerta de error vía API compartida (:8002) usando catálogo dbo.notificaciones.
+    """
+    if not settings.notificaciones_errores_habilitado:
+        return ResultadoEnvio(omitido_motivo="notificaciones deshabilitadas")
 
     traceback_text = ""
     if exc is not None:
@@ -32,9 +28,17 @@ def notificar_error_pipeline(
             traceback.format_exception(type(exc), exc, exc.__traceback__)
         )
 
-    return servicio.notificar_fallo(
-        origen=origen,
-        mensajes=list(mensajes),
-        fecha_corte=fecha_corte,
-        traceback_text=traceback_text,
+    causa_partes = list(mensajes)
+    if fecha_corte:
+        causa_partes.insert(0, f"Fecha de corte: {fecha_corte}")
+    if traceback_text:
+        causa_partes.extend(["", "Traza técnica:", traceback_text])
+    causa = "\n".join(causa_partes) if causa_partes else "Sin detalle adicional"
+
+    client = build_notificaciones_api_client()
+    return client.notificar_error(
+        id_proceso="cartera_mora",
+        paso=origen,
+        causa=causa,
+        asunto_prefix=settings.notificaciones_asunto_prefijo,
     )

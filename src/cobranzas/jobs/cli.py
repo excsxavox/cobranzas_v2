@@ -33,10 +33,6 @@ def _parser() -> argparse.ArgumentParser:
         help="Generar data/catalogo/dias_feriados.xlsx (Ecuador)",
     )
     sub.add_parser(
-        "plantilla-notificaciones",
-        help="Generar data/catalogo/notificaciones_errores.xlsx",
-    )
-    sub.add_parser(
         "migrar-bd",
         help="Añadir columnas nuevas deudor/deuda en SQLite existente",
     )
@@ -113,10 +109,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return run()
     if comando == "plantilla-feriados":
         from cobranzas.jobs.plantilla_feriados import main as run
-
-        return run()
-    if comando == "plantilla-notificaciones":
-        from cobranzas.jobs.plantilla_notificaciones import main as run
 
         return run()
     if comando == "migrar-bd":

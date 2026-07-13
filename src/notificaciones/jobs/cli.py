@@ -18,6 +18,22 @@ def _configurar_logging(nivel: str = "INFO") -> None:
     )
 
 
+def cmd_api(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    from notificaciones.api.app import create_app
+    from notificaciones.infrastructure.config.settings import NotificacionesSettings
+
+    cfg = NotificacionesSettings()
+    app = create_app(cfg)
+    uvicorn.run(
+        app,
+        host=args.host or cfg.notificaciones_api_host,
+        port=args.port or cfg.notificaciones_api_port,
+    )
+    return 0
+
+
 def cmd_test_envio(args: argparse.Namespace) -> int:
     svc = build_notificacion_service()
     variables = {
@@ -81,6 +97,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Ruta de archivo adjunto (repetible)",
     )
     test.set_defaults(handler=cmd_test_envio)
+
+    api_cmd = sub.add_parser(
+        "api",
+        help="Inicia la API REST de notificaciones en :8002",
+    )
+    api_cmd.add_argument("--host", default=None, help="Host (default NOTIFICACIONES_API_HOST)")
+    api_cmd.add_argument("--port", default=None, type=int, help="Puerto (default NOTIFICACIONES_API_PORT)")
+    api_cmd.set_defaults(handler=cmd_api)
 
     args = parser.parse_args(argv)
     _configurar_logging(args.log_level)

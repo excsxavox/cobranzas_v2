@@ -4,74 +4,67 @@ import logging
 from datetime import date, datetime
 from typing import List, Optional, Set
 
-from sqlalchemy import text
-
 from preventiva.application.chain.preventiva_context import PreventivaContext
 from preventiva.jobs.container import build_cadena
 from preventiva.infrastructure.config.settings import PreventivaSettings
 
 log = logging.getLogger("preventiva.runner")
 
+_ASUNTO_PREFIX = "[BOT COBRANZA PREVENTIVA]"
+
 
 def _generar_proceso_cod() -> str:
     return datetime.utcnow().strftime("%Y%m%d%H%M%S")
 
 
-def _destinatarios_notificacion(session_factory, estado: str) -> List[str]:
-    """Lee correos de dbo.notificaciones para el estado dado (HU líneas 147-149)."""
-    try:
-        with session_factory() as session:
-            fila = session.execute(
-                text(
-                    "SELECT correo_para FROM notificaciones "
-                    "WHERE id_proceso = 'general' AND estado = :estado AND activo = 1"
-                ),
-                {"estado": estado},
-            ).fetchone()
-        if fila and fila[0]:
-            return [c.strip() for c in fila[0].split(";") if c.strip()]
-    except Exception as exc:
-        log.warning("No se pudieron leer destinatarios: %s", exc)
-    return []
+def _adjuntos_resultado(ctx: PreventivaContext) -> List[str]:
+    adjuntos: List[str] = []
+    if ctx.ruta_isabel:
+        adjuntos.append(str(ctx.ruta_isabel))
+    if ctx.numero_gestion == 3 and ctx.ruta_reporte:
+        adjuntos.append(str(ctx.ruta_reporte))
+    return adjuntos
 
 
-def _notificar(cfg: PreventivaSettings, session_factory, ctx: PreventivaContext) -> None:
-    """Envía correo de resultado (OK/Error) reutilizando SmtpCorreoAdapter."""
-    if not cfg.smtp_host:
-        log.info("SMTP no configurado; se omite notificación.")
-        return
-    estado = "OK" if ctx.ok else "Error"
-    destinatarios = _destinatarios_notificacion(session_factory, estado)
-    if not destinatarios:
-        return
-    try:
-        from cobranzas.infrastructure.adapters.smtp_correo_adapter import SmtpCorreoAdapter
+def _notificar(ctx: PreventivaContext) -> None:
+    """Envía correo de resultado vía API compartida de notificaciones."""
+    from notificaciones import build_notificaciones_api_client
 
-        adapter = SmtpCorreoAdapter(
-            host=cfg.smtp_host,
-            port=cfg.smtp_port,
-            usuario=cfg.smtp_user,
-            password=cfg.smtp_password,
-            remitente=cfg.smtp_from,
-            usar_tls=cfg.smtp_use_tls,
+    client = build_notificaciones_api_client()
+    fecha_str = ctx.fecha_ejecucion.strftime("%d/%m/%Y")
+
+    if ctx.ok:
+        resultado = client.enviar(
+            id_proceso="proceso_completo",
+            estado="OK",
+            asunto=f"{_ASUNTO_PREFIX} Proceso {fecha_str} finalizado OK",
+            variables={
+                "fecha": fecha_str,
+                "numero_gestion": str(ctx.numero_gestion),
+                "proceso_cod": ctx.proceso_cod,
+            },
+            adjuntos=_adjuntos_resultado(ctx),
         )
-        if ctx.ok:
-            asunto = f"[Gestión Preventiva] OK — {ctx.fecha_ejecucion:%d/%m/%Y} (gestión {ctx.numero_gestion})"
-            cuerpo = (
-                f"Proceso {ctx.proceso_cod} finalizado correctamente.\n"
-                f"Seleccionados: {len(ctx.seleccionados)}\n"
-                f"Archivo Isabel: {ctx.ruta_isabel}\n"
-                f"Reporte: {ctx.ruta_reporte}"
-            )
-        else:
-            asunto = f"[Gestión Preventiva] ERROR — {ctx.fecha_ejecucion:%d/%m/%Y}"
-            cuerpo = (
-                f"El proceso {ctx.proceso_cod} se detuvo con error.\n\n{ctx.mensaje_error}"
-            )
-        adapter.enviar(destinatarios, asunto, cuerpo)
-        log.info("Notificación enviada a %d destinatario(s)", len(destinatarios))
-    except Exception as exc:
-        log.warning("Fallo al enviar notificación: %s", exc)
+    else:
+        paso = ctx.paso_fallido or "pipeline_preventiva"
+        resultado = client.notificar_error(
+            id_proceso=paso if paso != "pipeline_preventiva" else "general",
+            paso=paso,
+            causa=ctx.mensaje_error or "Error desconocido en pipeline preventiva",
+            proceso_cod=ctx.proceso_cod,
+            asunto_prefix=_ASUNTO_PREFIX,
+        )
+
+    if resultado.enviado:
+        log.info(
+            "Notificación enviada a %d destinatario(s)",
+            len(resultado.destinatarios),
+        )
+    elif resultado.omitido_motivo:
+        log.warning("Notificación omitida: %s", resultado.omitido_motivo)
+    else:
+        for error in resultado.errores:
+            log.warning("Fallo al enviar notificación: %s", error)
 
 
 def ejecutar_preventiva(
@@ -143,10 +136,11 @@ def ejecutar_preventiva(
     except Exception as exc:
         log.exception("Error en pipeline preventiva: %s", exc)
         ctx.ok = False
+        ctx.paso_fallido = ctx.paso_fallido or "pipeline_preventiva"
         ctx.mensaje_error = str(exc)
         historial_repo.cerrar(proceso_cod, estado="ERROR")
 
     # Notificación de resultado (HU líneas 139-149)
-    _notificar(cfg, sf, ctx)
+    _notificar(ctx)
 
     return ctx

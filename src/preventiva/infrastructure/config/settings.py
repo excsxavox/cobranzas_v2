@@ -57,14 +57,6 @@ class PreventivaSettings(BaseSettings):
     # ── Feriados: clave en dbo.claves (tabla compartida con carteramora) ──
     clave_feriados: str = Field(default="feriados_catalogo", alias="CLAVE_FERIADOS")
 
-    # ── SMTP (reutiliza los mismos parámetros de carteramora) ──────────────
-    smtp_host: Optional[str] = Field(default=None, alias="SMTP_HOST")
-    smtp_port: int = Field(default=587, alias="SMTP_PORT")
-    smtp_user: Optional[str] = Field(default=None, alias="SMTP_USER")
-    smtp_password: Optional[str] = Field(default=None, alias="SMTP_PASSWORD")
-    smtp_from: Optional[str] = Field(default=None, alias="SMTP_FROM")
-    smtp_use_tls: bool = Field(default=True, alias="SMTP_USE_TLS")
-
     # ── Logging ────────────────────────────────────────────────────────────
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     log_dir: Path = Field(default=Path("logs"), alias="LOG_DIR")
